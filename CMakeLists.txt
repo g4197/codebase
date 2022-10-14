@@ -20,10 +20,34 @@ add_compile_options(
 	-g
 )
 
+add_definitions(
+	-DMEMC_IP=$ENV{MEMC_IP}
+	# -DMLX4
+	# -DNO_DESTRUCT
+)
+
 link_libraries(
 	ibverbs
     memkind
 	jemalloc
 	glog
 	pmem
+)
+
+file(GLOB RDMA_LIB_SRC ${PROJECT_SOURCE_DIR}/src/rdma/*.cpp)
+
+add_library(
+	librdma
+	STATIC
+	${RDMA_LIB_SRC}
+)
+
+add_executable(
+	main
+	${PROJECT_SOURCE_DIR}/src/main.cpp
+)
+
+target_link_libraries(
+	main
+	librdma
 )

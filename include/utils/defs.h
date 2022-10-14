@@ -32,6 +32,7 @@ inline std::string type_name() {
 
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
+#define forceinline inline __attribute__((always_inline))
 
 constexpr int kCacheLineSize = 64;
 const uint64_t kPMLineSize = 256;
@@ -47,10 +48,10 @@ inline void sfence() {
     asm volatile("sfence" ::: "memory");
 }
 
-inline int64_t rdtsc() {
-    uint32_t lo, hi;
+inline uint64_t rdtsc() {
+    uint64_t lo, hi;
     asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
-    return ((int64_t)hi << 32) | lo;
+    return ((uint64_t)hi << 32) | lo;
 }
 
 inline void prefetch(const void *ptr) {

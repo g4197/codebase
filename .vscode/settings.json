@@ -5,6 +5,8 @@
         "cassert": "cpp",
         "array": "cpp",
         "string": "cpp",
-        "string_view": "cpp"
+        "string_view": "cpp",
+        "ostream": "cpp",
+        "tuple": "cpp"
     }
 }
