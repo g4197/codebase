@@ -1,6 +1,6 @@
-#include "rdma/resource.h"
-
 #include <glog/logging.h>
+
+#include "rdma/context.h"
 
 namespace rdma {
 Context::Context(int dev_index, uint8_t port, int gid_index) {
@@ -319,6 +319,22 @@ void Context::printDeviceInfoEx() {
     LOG(INFO) << "Tag matching Max number of outstanding operations: " << attrs.tm_caps.max_ops;
     LOG(INFO) << "Tag matching Max number of tags: " << attrs.tm_caps.max_num_tags;
 #endif
+}
+
+void Context::fillAhAttr(ibv_ah_attr *attr, uint32_t remote_lid, uint8_t *remote_gid) {
+    memset(attr, 0, sizeof(ibv_ah_attr));
+    attr->dlid = remote_lid;
+    attr->sl = 0;
+    attr->src_path_bits = 0;
+    attr->port_num = port;
+
+    // fill ah_attr with GRH
+    attr->is_global = 1;
+    memcpy(&attr->grh.dgid, remote_gid, 16);
+    attr->grh.flow_label = 0;
+    attr->grh.hop_limit = 1;  // Won't leave the local subnet
+    attr->grh.sgid_index = gid_index;
+    attr->grh.traffic_class = 0;
 }
 
 };  // namespace rdma

@@ -32,14 +32,18 @@ link_libraries(
 	jemalloc
 	glog
 	pmem
+	pthread
+	numa
 )
 
 file(GLOB RDMA_LIB_SRC ${PROJECT_SOURCE_DIR}/src/rdma/*.cpp)
+file(GLOB UTILS_LIB_SRC ${PROJECT_SOURCE_DIR}/src/utils/*.cpp)
 
 add_library(
 	librdma
 	STATIC
 	${RDMA_LIB_SRC}
+	${UTILS_LIB_SRC}
 )
 
 add_executable(

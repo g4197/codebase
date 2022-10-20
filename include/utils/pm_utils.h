@@ -60,17 +60,24 @@ public:
 #else
         AllocatorInfo *info = &infos[idx];
         int ret = kPoolCreate, fd = -1;
-        // NUMA-aware
 
+#ifndef DEVDAX
         std::string cur_pool_name = kPMPrefix + std::to_string(idx % kNUMANodes) + "/" + pool_name;
-
         info->start = cur_map_start_addr;
         cur_map_start_addr = (char *)cur_map_start_addr + pool_size;
-
+#ifdef CREATE
+        fd = open(cur_pool_name.c_str(), O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+        if (ftruncate(fd, pool_size) != 0) {
+            LOG(ERROR) << "ftruncate failed";
+            exit(0);
+        }
+        ret = kPoolCreate;
+#else
         if (access(cur_pool_name.c_str(), F_OK) != 0) {
             fd = open(cur_pool_name.c_str(), O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
             if (ftruncate(fd, pool_size) != 0) {
                 LOG(ERROR) << "ftruncate failed";
+                exit(0);
             }
         } else {
             fd = open(cur_pool_name.c_str(), O_RDWR);
@@ -78,13 +85,19 @@ public:
             stat(cur_pool_name.c_str(), &st);
             if (st.st_size != (int64_t)pool_size) {
                 LOG(ERROR) << "size of " << cur_pool_name << " is not " << pool_size;
+                exit(0);
             }
-#ifdef CREATE
-            ret = kPoolCreate;
-#else
             ret = kPoolOpen;
-#endif
         }
+#endif  // create
+#else
+        char devdax_name_buf[1024];
+        sprintf(devdax_name_buf, "/dev/dax%lu.0", idx % kNUMANodes);
+        fd = open(devdax_name_buf, O_RDWR);
+        ret = kPoolCreate;
+        std::string cur_pool_name = devdax_name_buf;
+#endif  // devdax
+
 #ifdef PRE_FAULT
         info->start =
             mmap(info->start, pool_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | MAP_POPULATE, fd, 0);
