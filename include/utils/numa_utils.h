@@ -11,11 +11,19 @@
 
 #include "utils/defs.h"
 
-inline size_t num_lcores_per_numa_node() {
-    return static_cast<size_t>(numa_num_configured_cpus() / numa_num_configured_nodes());
+inline int numa_nodes() {
+    // O(1) here. Assume numa_nodes won't change when running.
+    // avoid repeatedly call numa_num_configured_nodes()
+    static int ret = numa_num_configured_nodes();
+    return ret;
 }
 
-std::vector<size_t> get_lcores_for_numa_node(size_t numa_node) {
+inline size_t threads_per_numa_node() {
+    static size_t ret = static_cast<size_t>(numa_num_configured_cpus() / numa_num_configured_nodes());
+    return ret;
+}
+
+inline std::vector<size_t> get_lcores_for_numa_node(size_t numa_node) {
     rt_assert(numa_node <= static_cast<size_t>(numa_max_node()), "Invalid numa_node");
 
     std::vector<size_t> ret;
@@ -29,7 +37,7 @@ std::vector<size_t> get_lcores_for_numa_node(size_t numa_node) {
     return ret;
 }
 
-void bind_to_core(pthread_t native_handle, size_t numa_node, size_t numa_local_index) {
+inline void bind_to_core(pthread_t native_handle, size_t numa_node, size_t numa_local_index) {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
 
@@ -47,7 +55,7 @@ void bind_to_core(pthread_t native_handle, size_t numa_node, size_t numa_local_i
     rt_assert(rc == 0, "Error setting thread affinity");
 }
 
-void clear_affinity_for_process() {
+inline void clear_affinity_for_process() {
     cpu_set_t mask;
     CPU_ZERO(&mask);
     const size_t num_cpus = std::thread::hardware_concurrency();

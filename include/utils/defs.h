@@ -7,7 +7,6 @@
 #include <typeinfo>
 
 #include "glog/logging.h"
-#include "utils/topology.h"
 
 /*
  * Some necessary defs and some helper functions.
@@ -17,12 +16,18 @@
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #define forceinline inline __attribute__((always_inline))
 
+constexpr int kMaxNUMANodes = 8; // Maybe need to modify this
 constexpr int hardware_destructive_interference_size = 128;
 constexpr int kCacheLineSize = 64;
 const uint64_t kPMLineSize = 256;
 constexpr uint64_t kMask48 = (1ul << 48) - 1;
 constexpr uint64_t kThreadBufSize = 4096;
+
 extern __thread char thread_buf[kThreadBufSize] __attribute__((aligned(kPMLineSize)));
+
+// Need to be initialized in advance
+extern __thread int my_thread_id;
+extern __thread int my_numa_id;
 
 inline void fence() {
     asm volatile("" ::: "memory");

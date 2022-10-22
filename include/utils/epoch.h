@@ -2,16 +2,15 @@
 #define EPOCH_H_
 
 #include <atomic>
+#include "defs.h"
 
-#include "topology.h"
 
 // A simple epoch-based synchronization algorithm
 // Depending on "my_thread_id" variable to identify local epoch.
+// Bind core first!!!!
 
 namespace epoch {
 constexpr uint64_t kOutEpochVersion = UINT64_MAX;
-constexpr int hardware_destructive_interference_size = 128;
-constexpr int kCacheLineSize = 64;
 using std::atomic;
 class Epoch {
 public:
@@ -53,8 +52,14 @@ public:
         epochs_[thread_id].out();
     }
 
+    inline int64_t g_version() {
+        return g_version_.load(std::memory_order_acquire);
+    }
+
     inline uint64_t incAndWait(uint64_t delta = 1) {
-        uint64_t ret = g_version_.fetch_add(delta, std::memory_order_relaxed);
+        // Stunned in this memory order...
+        // But in x86, any memory order will be compiled to a fence, so it's OK.
+        uint64_t ret = g_version_.fetch_add(delta, std::memory_order_seq_cst);
         bool should_wait = true;
         while (should_wait) {
             should_wait = false;

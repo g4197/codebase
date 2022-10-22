@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "numa_utils.h"
 #include <atomic>
 #include <cassert>
 
@@ -24,8 +25,8 @@ extern void *cur_map_start_addr;
 void *const kPMMapStartAddr = (void *)0x419700000000;
 const std::string kPMPrefix = "/mnt/pm";
 constexpr size_t kDRAMIdx = UINT64_MAX;
-extern void *numa_addr_start[kNUMANodes];
-extern void *numa_addr_end[kNUMANodes];
+extern void *numa_addr_start[kMaxNUMANodes];
+extern void *numa_addr_end[kMaxNUMANodes];
 
 enum { kPoolCreate, kPoolOpen };
 struct AllocatorInfo {
@@ -34,7 +35,7 @@ struct AllocatorInfo {
     void *start;
     size_t size;
 };
-extern AllocatorInfo infos[kNUMANodes];
+extern AllocatorInfo infos[kMaxNUMANodes];
 
 inline void *dram_alloc(size_t size) {
     void *ptr;
@@ -51,7 +52,7 @@ inline void dram_free(void *ptr) {
 
 template<size_t idx>
 class GAllocator {
-    static_assert(idx < kNUMANodes, "idx should be less than kNUMANodes");
+    static_assert(idx < kMaxNUMANodes, "idx should be less than kMaxNUMANodes");
 
 public:
     static inline int init_pool(const std::string &pool_name, const size_t pool_size) {
@@ -62,7 +63,7 @@ public:
         int ret = kPoolCreate, fd = -1;
 
 #ifndef DEVDAX
-        std::string cur_pool_name = kPMPrefix + std::to_string(idx % kNUMANodes) + "/" + pool_name;
+        std::string cur_pool_name = kPMPrefix + std::to_string(idx % kMaxNUMANodes) + "/" + pool_name;
         info->start = cur_map_start_addr;
         cur_map_start_addr = (char *)cur_map_start_addr + pool_size;
 #ifdef CREATE
@@ -92,7 +93,7 @@ public:
 #endif  // create
 #else
         char devdax_name_buf[1024];
-        sprintf(devdax_name_buf, "/dev/dax%lu.0", idx % kNUMANodes);
+        sprintf(devdax_name_buf, "/dev/dax%lu.0", idx % kMaxNUMANodes);
         fd = open(devdax_name_buf, O_RDWR);
         ret = kPoolCreate;
         std::string cur_pool_name = devdax_name_buf;
@@ -124,8 +125,8 @@ public:
         return dram_alloc(size);
 #else
         void *ptr;
-        for (int i = 0; i < kNUMANodes; i++) {
-            AllocatorInfo *info = &infos[(idx + i) % kNUMANodes];
+        for (int i = 0; i < numa_nodes(); i++) {
+            AllocatorInfo *info = &infos[(idx + i) % kMaxNUMANodes];
             if (likely(!memkind_posix_memalign(info->pmem_kind, &ptr, kCacheLineSize, size))) {
                 return ptr;
             }
@@ -140,6 +141,8 @@ template<>
 class GAllocator<kDRAMIdx> {
 public:
     static inline int init_pool(const std::string &pool_name, const size_t pool_size) {
+        std::ignore = pool_name;
+        std::ignore = pool_size;
         return kPoolCreate;
     }
     static inline void *pm_alloc(size_t size) {
@@ -151,7 +154,7 @@ inline void pm_free(void *ptr) {
 #ifdef USE_DRAM
     return dram_free(ptr);
 #else
-    for (int i = 0; i < kNUMANodes; i++) {
+    for (int i = 0; i < numa_nodes(); i++) {
         if (ptr >= numa_addr_start[i] && ptr < numa_addr_end[i]) {
             AllocatorInfo *info = &infos[i];
             memkind_free(info->pmem_kind, ptr);

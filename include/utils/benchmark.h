@@ -25,8 +25,8 @@ class Benchmark {
 public:
     enum BindCoreStrategy { kNUMAUniform = -1, kNUMA0 = 0, kNUMA1 };
     template<class Function, class... Args>
-    static Benchmark run(BindCoreStrategy strategy, uint64_t num_threads, TotalOp *total_op, Function &&f,
-                         Args &&...args) {
+    inline static Benchmark run(BindCoreStrategy strategy, uint64_t num_threads, TotalOp *total_op, Function &&f,
+                                Args &&...args) {
         Benchmark benchmark;
         benchmark.strategy_ = strategy;
         benchmark.total_op_ = total_op;
@@ -35,7 +35,7 @@ public:
         for (size_t i = 0; i < num_threads; ++i) {
             benchmark.threads_[i] = std::thread([&] {
                 my_thread_id = i;
-                my_numa_id = strategy == kNUMAUniform ? i % kNUMANodes : (int)strategy;
+                my_numa_id = strategy == kNUMAUniform ? i % numa_nodes() : (int)strategy;
                 f(args...);
             });
         }
@@ -45,13 +45,13 @@ public:
             }
         } else {
             for (size_t i = 0; i < num_threads; ++i) {
-                bind_to_core(benchmark.threads_[i].native_handle(), i % kNUMANodes, i / kNUMANodes);
+                bind_to_core(benchmark.threads_[i].native_handle(), i % numa_nodes(), i / numa_nodes());
             }
         }
         return benchmark;
     }
 
-    void printTputAndJoin(std::string name = "") {
+    inline void printTputAndJoin(std::string name = "") {
         std::thread *counter_thread = new std::thread([&]() {
             uint64_t cur = 0, prev = 0;
             while (true) {
@@ -73,8 +73,8 @@ public:
                 std::this_thread::sleep_for(std::chrono::seconds(1));
             }
         });
-        uint64_t numa = strategy_ == kNUMAUniform ? 0 : (strategy_ + 1) % kNUMANodes;
-        uint64_t core = strategy_ == kNUMAUniform ? num_threads_ / kNUMANodes + 1 : 0;
+        uint64_t numa = strategy_ == kNUMAUniform ? 0 : (strategy_ + 1) % numa_nodes();
+        uint64_t core = strategy_ == kNUMAUniform ? num_threads_ / numa_nodes() + 1 : 0;
         bind_to_core(counter_thread->native_handle(), numa, core);
         for (size_t i = 0; i < num_threads_; ++i) {
             threads_[i].join();
