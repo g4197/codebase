@@ -50,14 +50,15 @@
 #include <cstddef>
 #include <type_traits>
 
-#include "utils/random.h"
-#include "utils/slice.h"
+#include "random.h"
+#include "slice.h"
+
 class Allocator {
 public:
     char *Allocate(size_t bytes) {
         return AllocateAligned(bytes);
     }
-    char *AllocateAligned(size_t bytes, size_t huge_page_size = 0) {
+    char *AllocateAligned(size_t bytes) {
         return (char *)aligned_alloc(8, bytes);
     }
 };

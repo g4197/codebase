@@ -1,16 +1,17 @@
 #ifndef EPOCH_H_
 #define EPOCH_H_
 
-#include <atomic>
-#include "defs.h"
+#include <assert.h>
 
+#include <atomic>
+
+#include "defs.h"
 
 // A simple epoch-based synchronization algorithm
 // Depending on "my_thread_id" variable to identify local epoch.
 // Bind core first!!!!
 
-namespace epoch {
-constexpr uint64_t kOutEpochVersion = UINT64_MAX;
+static constexpr uint64_t kOutEpochVersion = UINT64_MAX;
 using std::atomic;
 class Epoch {
 public:
@@ -86,6 +87,7 @@ private:
 class EpochGuard {
 public:
     EpochGuard(EpochManager &manager) : manager_(manager) {
+        assert(my_thread_id != kInvalidThreadNUMAId);
         manager_.in(my_thread_id);
     }
 
@@ -96,7 +98,5 @@ public:
 private:
     EpochManager &manager_;
 };
-
-};  // namespace epoch
 
 #endif  // EPOCH_H_

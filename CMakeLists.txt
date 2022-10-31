@@ -32,6 +32,7 @@ link_libraries(
 	jemalloc
 	glog
 	pmem
+	memcached
 	pthread
 	numa
 )

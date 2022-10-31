@@ -16,7 +16,11 @@
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #define forceinline inline __attribute__((always_inline))
 
-constexpr int kMaxNUMANodes = 8; // Maybe need to modify this
+constexpr int kMaxNUMANodes = 8;  // Maybe need to modify this
+constexpr int kBindCoreOffset[kMaxNUMANodes] = {
+    0, 0, 0, 0, 0, 0, 0, 0
+};  // Offset is i means Thread class's bind starts from i.
+
 constexpr int hardware_destructive_interference_size = 128;
 constexpr int kCacheLineSize = 64;
 const uint64_t kPMLineSize = 256;
@@ -28,6 +32,7 @@ extern __thread char thread_buf[kThreadBufSize] __attribute__((aligned(kPMLineSi
 // Need to be initialized in advance
 extern __thread int my_thread_id;
 extern __thread int my_numa_id;
+constexpr int kInvalidThreadNUMAId = -1;
 
 inline void fence() {
     asm volatile("" ::: "memory");

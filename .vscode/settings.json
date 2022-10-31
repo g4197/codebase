@@ -50,6 +50,8 @@
         "map": "cpp",
         "ratio": "cpp",
         "regex": "cpp",
-        "iostream": "cpp"
+        "iostream": "cpp",
+        "numeric": "cpp",
+        "random": "cpp"
     }
 }
