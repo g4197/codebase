@@ -27,6 +27,15 @@ public:
         bind_to_core(thread_.native_handle(), numa, core_id_);
     }
 
+    Thread &operator=(const Thread &rhs) = delete;
+
+    inline Thread &operator=(Thread &&t) noexcept {
+        thread_ = std::move(t.thread_);
+        thread_id_ = t.thread_id_;
+        numa_id_ = t.numa_id_;
+        return *this;
+    }
+
     inline void join() {
         thread_.join();
     }

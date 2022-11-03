@@ -2,6 +2,7 @@
 #define MEMCACHE_H_
 
 // A simple memcached wrapper
+#include <glog/logging.h>
 #include <libmemcached/memcached.h>
 
 #include <fstream>
@@ -12,7 +13,9 @@
 
 class Memcache {
 public:
-    Memcache(std::string conf_path = "../memcached.conf") {
+    Memcache() : memc_(nullptr) {}
+
+    Memcache(const std::string &conf_path) {
         this->connect(conf_path);
     }
 

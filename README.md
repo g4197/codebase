@@ -1,5 +1,5 @@
-# RDMA-wrapper
+# codebase
 
-* To make an RDMA wrapper for drivers with version 5 (RDMA-Core).
+* To make a simple RDMA wrapper.
 
 * By the way, collect the code that I may use later.

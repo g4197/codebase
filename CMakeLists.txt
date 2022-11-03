@@ -21,8 +21,7 @@ add_compile_options(
 )
 
 add_definitions(
-	-DMEMC_IP=$ENV{MEMC_IP}
-	# -DMLX4
+	# -DNDEBUG
 	# -DNO_DESTRUCT
 )
 
