@@ -1,5 +1,5 @@
-#ifndef UTILS_H_
-#define UTILS_H_
+#ifndef DEFS_H_
+#define DEFS_H_
 #include <cxxabi.h>
 
 #include <string>
@@ -61,4 +61,12 @@ inline void rt_assert(bool condition, std::string throw_str) {
     }
 }
 
-#endif  // UTILS_H_
+/*
+inline void movdir64b(void *dst, void *src) {
+    // Use the movdir64b to move 64B atomically from src to dst.
+    // Load from src is not atomic, but store to dst is.
+    asm volatile("movdir64b (%0), (%1)" : : "r"(src), "r"(dst) : "memory");
+}
+*/
+
+#endif  // DEFS_H_

@@ -55,6 +55,12 @@ private:
 class LockGuard {
 public:
     LockGuard(pthread_rwlock_t *lock) : lock_(lock) {}
+    LockGuard &operator=(const LockGuard &) = delete;
+    LockGuard &operator=(LockGuard &&rhs) {
+        lock_ = rhs.lock_;
+        rhs.lock_ = nullptr;
+        return *this;
+    }
     ~LockGuard() {
         if (lock_) {
             pthread_rwlock_unlock(lock_);
