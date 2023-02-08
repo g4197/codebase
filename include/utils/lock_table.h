@@ -17,31 +17,35 @@ public:
     }
     ~LockTable();
 
-    pthread_rwlock_t *rdlock(const Slice &key) {
+    inline pthread_rwlock_t *rdlock(const Slice &key) {
         auto lock = &locks_[hash_f_(key) % size_];
         pthread_rwlock_rdlock(lock);
         return lock;
     }
 
-    pthread_rwlock_t *wrlock(const Slice &key) {
+    inline uint64_t pos(const Slice &key) {
+        return hash_f_(key) % size_;
+    }
+
+    inline pthread_rwlock_t *wrlock(const Slice &key) {
         auto lock = &locks_[hash_f_(key) % size_];
         pthread_rwlock_wrlock(lock);
         return lock;
     }
 
-    bool tryrdlock(const Slice &key) {
+    inline bool tryrdlock(const Slice &key) {
         return (pthread_rwlock_tryrdlock(&locks_[hash_f_(key) % size_]) == 0);
     }
 
-    bool trywrlock(const Slice &key) {
+    inline bool trywrlock(const Slice &key) {
         return (pthread_rwlock_trywrlock(&locks_[hash_f_(key) % size_]) == 0);
     }
 
-    void unlock(pthread_rwlock_t *lock) {
+    inline void unlock(pthread_rwlock_t *lock) {
         pthread_rwlock_unlock(lock);
     }
 
-    void unlock(const Slice &key) {
+    inline void unlock(const Slice &key) {
         pthread_rwlock_unlock(&locks_[hash_f_(key) % size_]);
     }
 

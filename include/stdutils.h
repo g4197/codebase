@@ -12,6 +12,7 @@
 #include "utils/numa_utils.h"
 #include "utils/pm_utils.h"
 #include "utils/random.h"
+#include "utils/serialize.h"
 #include "utils/skiplist.h"
 #include "utils/slice.h"
 #include "utils/str_utils.h"

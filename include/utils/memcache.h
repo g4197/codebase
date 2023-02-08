@@ -35,8 +35,7 @@ public:
         }
 
         std::string addr, port;
-        std::getline(conf, addr);
-        std::getline(conf, port);
+        conf >> addr >> port;
 
         memc_ = memcached_create(nullptr);
         servers = memcached_server_list_append(servers, strip(addr).c_str(), std::stoi(strip(port)), &rc);
