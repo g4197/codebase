@@ -14,15 +14,15 @@ struct TotalOp {
     char pad_back[hardware_destructive_interference_size - sizeof(uint64_t)];
 };
 
+/*
+ * A simple benchmark util.
+ * total_op is an array of a thread's total ops, used to calculate tput,
+ * update method: total_op[my_thread_id].ops++; // += k
+ * param to pass: strategy, num_threads, total_op array and a lambda (or other function)
+ * Action: this class will create num_threads threads, initialize my_thread_id and my_numa_id, then run.
+ * By using printTputAndJoin, we can get the throughput.
+ */
 class Benchmark {
-    /*
-     * A simple benchmark util.
-     * total_op is an array of a thread's total ops, used to calculate tput,
-     * update method: total_op[my_thread_id].ops++; // += k
-     * param to pass: strategy, num_threads, total_op array and a lambda (or other function)
-     * Action: this class will create num_threads threads, initialize my_thread_id and my_numa_id, then run.
-     * By using printTputAndJoin, we can get the throughput.
-     */
 public:
     enum BindCoreStrategy { kNUMAUniform = -1, kNUMA0 = 0, kNUMA1 };
     template<class Function, class... Args>

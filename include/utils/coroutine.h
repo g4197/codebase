@@ -36,14 +36,14 @@ struct Coroutine {
     }
 };
 
-constexpr uint64_t kMaxCoroutines = 32;
+constexpr uint64_t kMaxCoroutinesPerThread = 32;
 
 struct CoroScheduler {
     using coro_t = boost::coroutines2::coroutine<void>;
     int cur_index_;
     int coro_size_;
     coro_t::push_type *yield_;
-    Coroutine *coros_[kMaxCoroutines];
+    Coroutine *coros_[kMaxCoroutinesPerThread];
 
     template<class Function, class... Args>
     inline void insert(Function &&f, Args &&...args) {
