@@ -61,6 +61,10 @@ inline void rt_assert(bool condition, std::string throw_str) {
     }
 }
 
+inline bool cmpxchg16b(__int128_t *ptr, __int128_t old_value, __int128_t new_value) {
+    return __sync_bool_compare_and_swap(ptr, old_value, new_value);
+}
+
 /*
 inline void movdir64b(void *dst, void *src) {
     // Use the movdir64b to move 64B atomically from src to dst.

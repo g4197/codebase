@@ -1,3 +1,4 @@
+#include "utils/coroutine.h"
 #include "utils/pm_utils.h"
 #include "utils/thread_utils.h"
 
@@ -11,3 +12,5 @@ __thread int my_numa_id = kInvalidThreadNUMAId;
 
 std::atomic<int> Thread::tot_threads(0);
 std::atomic<int> Thread::numa_tot_threads[kMaxNUMANodes] = {};
+
+__thread CoroScheduler coro_scheduler;

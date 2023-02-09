@@ -16,7 +16,7 @@ add_compile_options(
     -fno-strict-aliasing
 	-std=c++17
 	-march=native
-	-O3
+	# -O3
 	-g
 )
 
@@ -26,6 +26,9 @@ add_definitions(
 )
 
 link_libraries(
+	atomic
+	boost_coroutine
+	boost_context
 	ibverbs
     memkind
 	jemalloc

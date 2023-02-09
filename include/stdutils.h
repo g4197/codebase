@@ -4,6 +4,7 @@
 // This file is named like stdc++.h, just include all the things in "utils" folder.
 
 #include "utils/benchmark.h"
+#include "utils/coroutine.h"
 #include "utils/defs.h"
 #include "utils/epoch.h"
 #include "utils/lock_table.h"
