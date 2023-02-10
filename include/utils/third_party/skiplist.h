@@ -51,7 +51,7 @@
 #include <type_traits>
 
 #include "random.h"
-#include "slice.h"
+#include "utils/slice.h"
 
 class Allocator {
 public:

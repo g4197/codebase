@@ -1,6 +1,7 @@
 #ifndef SERIALIZE_H_
 #define SERIALIZE_H_
 
+#include <algorithm>
 #include <string>
 
 #include "slice.h"
@@ -10,11 +11,6 @@
 // \return The size of the serialized object.
 
 namespace Serializer {
-template<class T>
-inline constexpr T &constexpr_max(T a, T b) {
-    return a > b ? a : b;
-}
-
 template<bool multi_string, class T0, class... Ts>
 uint64_t serialize_impl(char *buf, T0 t0, Ts... args) {
     uint64_t size = 0;
@@ -36,7 +32,7 @@ uint64_t serialize_impl(char *buf, T0 t0, Ts... args) {
         }
     } else if constexpr (std::is_pod_v<T0>) {
         memcpy(buf, &t0, sizeof(T0));
-        size += constexpr_max(sizeof(uint64_t), sizeof(T0));  // alignment.
+        size += std::max(sizeof(uint64_t), sizeof(T0));  // alignment.
     } else {
         static_assert(!sizeof(T0 *), "Unsupported type");
     }
@@ -77,7 +73,7 @@ void deserialize_impl(const char *buf, uint64_t size, T0 &t0, Ts &...args) {
         }
     } else if constexpr (std::is_pod_v<T0>) {
         memcpy(&t0, buf, sizeof(T0));
-        cur_size += constexpr_max(sizeof(T0), sizeof(uint64_t));
+        cur_size += std::max(sizeof(T0), sizeof(uint64_t));
     } else {
         static_assert(!sizeof(T0 *), "Unsupported type");
     }

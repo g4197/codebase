@@ -7,7 +7,7 @@
 #include "defs.h"
 #include "numa_utils.h"
 
-// A wrapper for std::thread, with my_thread_id and my_numa_id initialized.
+// A wrapper for std::thread to make a "jthread" like c++20, with my_thread_id and my_numa_id initialized.
 
 class Thread {
 public:
@@ -34,6 +34,12 @@ public:
         thread_id_ = t.thread_id_;
         numa_id_ = t.numa_id_;
         return *this;
+    }
+
+    ~Thread() {
+        if (thread_.joinable()) {
+            thread_.join();
+        }
     }
 
     inline void join() {
