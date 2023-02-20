@@ -1,15 +1,21 @@
 #ifndef RDMA_CONTEXT_H_
 #define RDMA_CONTEXT_H_
 
+#include <atomic>
 #include <vector>
 
+#include "rdma/mgr.h"
 #include "rdma/predefs.h"
-#include "utils/memcache.h"
 
 namespace rdma {
 
 struct Context {
-    Context(int dev_index = 0, uint8_t port = 1, int gid_index = 0, const std::string &conf_path = "../memcached.conf");
+    // GIDs are currently used only for RoCE. This default value works for most
+    // clusters, but we need a more robust GID selection method. Some observations:
+    //  * On physical clusters, gid_index = 0 always works (in my experience)
+    //  * On VM clusters (AWS/KVM), gid_index = 0 does not work, gid_index = 1 works
+    //  * Mellanox's `show_gids` script lists all GIDs on all NICs
+    Context(const std::string &rpc_ip, int rpc_port, uint8_t dev_port = 0, int gid_index = 0);
     ~Context();
 
     static constexpr int kQueueDepth = 128;
@@ -22,6 +28,9 @@ struct Context {
                 uint32_t max_inline_data = 0);
     void fillAhAttr(ibv_ah_attr *attr, uint32_t remote_lid, const uint8_t *remote_gid);
 
+    QPInfo getQPInfo(const std::string &ctx_ip, int ctx_port, int qp_id);
+    MRInfo getMRInfo(const std::string &ctx_ip, int ctx_port, int mr_id);
+
     uint8_t dev_index;
     uint8_t port;
     int gid_index;
@@ -30,7 +39,15 @@ struct Context {
     uint16_t lid;
     ibv_gid gid;
     int device_memory_size;
-    Memcache *memcache;
+
+    std::atomic<int> qp_id;
+    std::atomic<int> mr_id;
+    std::atomic<int> mr_on_chip_id;
+
+    ManagerServer mgr;
+
+    SimpleKV<std::string, ManagerClient> mgr_clients;
+    std::mutex mgr_clients_mutex;
 
     void printDeviceInfoEx();
 

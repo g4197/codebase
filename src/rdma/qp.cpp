@@ -1,7 +1,5 @@
 #include "rdma/qp.h"
 
-#include <glog/logging.h>
-
 #include "rdma/context.h"
 
 namespace rdma {
@@ -30,35 +28,19 @@ inline void fillSgeWr(ibv_sge &sg, ibv_recv_wr &wr, uint64_t source, uint64_t si
     wr.num_sge = 1;
 }
 
-QP::QP(ibv_qp *qp, Context *ctx) : qp(qp), ctx(ctx) {}
+QP::QP(ibv_qp *qp, Context *ctx, int id) : qp(qp), ctx(ctx), id(id) {}
 
-bool QP::publish(const std::string &key) {
-    QPInfo info;
-    info.qpn = qp->qp_num;
-    info.lid = ctx->lid;
-    memcpy(info.gid, ctx->gid.raw, 16);
-    return ctx->memcache->set(key, fixedToSlice(info));
-}
-
-bool QP::getPublished(const std::string &key, QPInfo &info) {
-    Slice s;
-    while (true) {
-        if (!ctx->memcache->get(key, s)) {
-            DLOG(INFO) << "Failed to get published QP info with key " << key;
-            usleep(1000);
-        } else {
-            break;
+bool QP::connect(const std::string &ctx_ip, int ctx_port, int qp_id) {
+    if (qp->qp_type == IBV_QPT_UD) {
+        return modifyToRTS(false);
+    } else {
+        QPInfo qp_info;
+        memset(&qp_info, 0, sizeof(qp_info));
+        while (!qp_info.valid) {
+            qp_info = ctx->getQPInfo(ctx_ip, ctx_port, qp_id);
         }
+        return modifyToRTR(qp_info) && modifyToRTS(false);
     }
-    memcpy(&info, s.data(), sizeof(QPInfo));
-    delete s.data();
-    return true;
-}
-
-bool QP::modifyToRTR(const std::string &remote_key) {
-    QPInfo remote_qp_info;
-    if (!getPublished(remote_key, remote_qp_info)) return false;
-    return modifyToRTR(remote_qp_info);
 }
 
 bool QP::modifyToRTR(const QPInfo &remote_qp_info) {
@@ -227,8 +209,8 @@ bool QP::recv(uint64_t source, uint64_t size, uint32_t lkey, uint64_t wr_id, boo
         wr.wr_id = wr_id;
         ret = ibv_post_recv(qp, &wr, &bad_wr);
     }
-    if (!ret) {
-        LOG(ERROR) << "Recv with RDMA_RECV failed";
+    if (ret) {
+        LOG(ERROR) << "Recv with RDMA_RECV failed ";
         return false;
     }
     return true;
@@ -275,6 +257,28 @@ void QP::printState() {
             LOG(INFO) << "QP state: unknown";
             break;
         }
+    }
+}
+
+void QP::pollSendCQ(int num_entries, ibv_wc *wc) {
+    int cnt = 0;
+    do {
+        cnt += ibv_poll_cq(qp->send_cq, num_entries, wc);
+    } while (cnt < num_entries);
+
+    if (wc->status != IBV_WC_SUCCESS) {
+        LOG(ERROR) << "Send CQ completion with error: " << wc->status << " (" << ibv_wc_status_str(wc->status) << ")";
+    }
+}
+
+void QP::pollRecvCQ(int num_entries, ibv_wc *wc) {
+    int cnt = 0;
+    do {
+        cnt += ibv_poll_cq(qp->recv_cq, num_entries, wc);
+    } while (cnt < num_entries);
+
+    if (wc->status != IBV_WC_SUCCESS) {
+        LOG(ERROR) << "Recv CQ completion with error: " << wc->status << " (" << ibv_wc_status_str(wc->status) << ")";
     }
 }
 

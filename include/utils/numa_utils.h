@@ -2,7 +2,6 @@
 #define NUMA_UTILS_H_
 // Borrowed from eRPC.
 
-#include <glog/logging.h>
 #include <numa.h>
 #include <stdio.h>
 
@@ -10,6 +9,7 @@
 #include <vector>
 
 #include "utils/defs.h"
+#include "utils/log.h"
 
 inline int numa_nodes() {
     // O(1) here. Assume numa_nodes won't change when running.
@@ -53,6 +53,10 @@ inline void bind_to_core(pthread_t native_handle, size_t numa_node, size_t numa_
     CPU_SET(global_index, &cpuset);
     int rc = pthread_setaffinity_np(native_handle, sizeof(cpu_set_t), &cpuset);
     rt_assert(rc == 0, "Error setting thread affinity");
+}
+
+inline void bind_to_core(size_t numa_node, size_t numa_local_index) {
+    return bind_to_core(pthread_self(), numa_node, numa_local_index);
 }
 
 inline void clear_affinity_for_process() {

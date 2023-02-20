@@ -1,7 +1,7 @@
 #ifndef COROUTINE_H_
 #define COROUTINE_H_
 
-#include <glog/logging.h>
+#include "utils/log.h"
 
 #include <boost/coroutine2/all.hpp>
 #include <vector>

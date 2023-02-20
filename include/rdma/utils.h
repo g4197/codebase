@@ -1,11 +1,12 @@
 #ifndef RDMA_UTILS_H_
 #define RDMA_UTILS_H_
-
-#include <glog/logging.h>
 #include <infiniband/verbs.h>
 
 #include <regex>
 #include <tuple>
+
+#include "utils/log.h"
+
 namespace rdma {
 using namespace std;
 

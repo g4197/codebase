@@ -2,14 +2,15 @@
 #define MEMCACHE_H_
 
 // A simple memcached wrapper
-#include <glog/logging.h>
 #include <libmemcached/memcached.h>
+#include <unistd.h>
 
 #include <fstream>
 #include <iostream>
 
 #include "slice.h"
 #include "str_utils.h"
+#include "utils/log.h"
 
 class Memcache {
 public:
@@ -123,10 +124,10 @@ public:
 
     inline void barrier(const Slice &name, uint64_t total) {
         faa(name, 1);
-        uint64_t value;
+        uint64_t value = 0;
         while (true) {
             get(Slice(name), value);
-            if (value == total) {
+            if (value % total == 0) {  // this can barrier multiple times.
                 break;
             }
             usleep(1000);

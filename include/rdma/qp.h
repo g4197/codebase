@@ -2,20 +2,13 @@
 #define RDMA_QP_H_
 #include <string>
 
+#include "rdma/mgr.h"
 #include "rdma/predefs.h"
 
 namespace rdma {
-struct QPInfo {
-    uint32_t qpn;
-    uint16_t lid;
-    uint8_t gid[16];
-};
-
 struct QP {
-    QP(ibv_qp *qp, Context *ctx);
-    bool publish(const std::string &key);
-    bool getPublished(const std::string &key, QPInfo &info);
-    bool modifyToRTR(const std::string &remote_key);
+    QP(ibv_qp *qp, Context *ctx, int id);
+    bool connect(const std::string &ctx_ip, int ctx_port, int qp_id);
     bool modifyToRTR(const QPInfo &remote_qp_info);
     bool modifyToRTS(bool rnr_retry = false);
     // UD send
@@ -24,8 +17,13 @@ struct QP {
     bool send(uint64_t source, uint64_t size, uint32_t lkey, bool with_imm = false, int32_t imm = 0);
     bool recv(uint64_t source, uint64_t size, uint32_t lkey, uint64_t wr_id = 0, bool is_srq = false);
     void printState();
+
+    void pollSendCQ(int num_entries, ibv_wc *wc);
+    void pollRecvCQ(int num_entries, ibv_wc *wc);
     ibv_qp *qp;
     Context *ctx;
+    int id;
+    ManagerClient *mgr_client;
 };
 }  // namespace rdma
 #endif  // RDMA_QP_H_

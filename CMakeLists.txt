@@ -16,37 +16,50 @@ add_compile_options(
     -fno-strict-aliasing
 	-std=c++17
 	-march=native
-	# -O3
+	-O3
 	-g
 )
 
 add_definitions(
 	# -DNDEBUG
-	# -DNO_DESTRUCT
+	# -DNO_EX_VERBS
 )
 
-link_libraries(
+file(GLOB RDMA_LIB_SRC ${PROJECT_SOURCE_DIR}/src/rdma/*.cpp)
+file(GLOB UTILS_LIB_SRC ${PROJECT_SOURCE_DIR}/src/utils/*.cpp ${PROJECT_SOURCE_DIR}/src/utils/*.cc)
+
+add_library(
+	rdma
+	STATIC
+	${RDMA_LIB_SRC}
+)
+
+target_link_libraries(
+	rdma
+	ibverbs
+	pthread
+)
+
+add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/rpclib)
+include_directories(${PROJECT_SOURCE_DIR}/third_party/rpclib/include)
+
+add_library(
+	utils
+	STATIC
+	${UTILS_LIB_SRC}
+)
+
+target_link_libraries(
+	utils
 	atomic
 	boost_coroutine
 	boost_context
-	ibverbs
     memkind
 	jemalloc
-	glog
 	pmem
 	memcached
 	pthread
 	numa
-)
-
-file(GLOB RDMA_LIB_SRC ${PROJECT_SOURCE_DIR}/src/rdma/*.cpp)
-file(GLOB UTILS_LIB_SRC ${PROJECT_SOURCE_DIR}/src/utils/*.cpp)
-
-add_library(
-	librdma
-	STATIC
-	${RDMA_LIB_SRC}
-	${UTILS_LIB_SRC}
 )
 
 add_executable(
@@ -56,5 +69,18 @@ add_executable(
 
 target_link_libraries(
 	main
-	librdma
+	rdma
+	utils
+)
+
+add_executable(
+	test_rdma
+	${PROJECT_SOURCE_DIR}/tests/test_rdma.cpp
+)
+
+target_link_libraries(
+	test_rdma
+	rdma
+	utils
+	rpc
 )

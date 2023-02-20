@@ -8,12 +8,12 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "numa_utils.h"
 #include <atomic>
 #include <cassert>
 
-#include "glog/logging.h"
+#include "numa_utils.h"
 #include "utils/defs.h"
+#include "utils/log.h"
 
 /*
  * A persistent memory allocator using memkind as volatile memory allocator.

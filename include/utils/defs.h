@@ -6,7 +6,7 @@
 #include <type_traits>
 #include <typeinfo>
 
-#include "glog/logging.h"
+#include "utils/log.h"
 
 /*
  * Some necessary defs and some helper functions.

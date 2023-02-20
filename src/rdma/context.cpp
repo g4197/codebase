@@ -1,88 +1,84 @@
 #include "rdma/context.h"
 
-#include <glog/logging.h>
+#include <tuple>
 
 #include "rdma/qp.h"
+#include "utils/log.h"
 
 namespace rdma {
-Context::Context(int dev_index, uint8_t port, int gid_index, const std::string &conf_path) {
-    this->memcache = new Memcache(conf_path);
-    ibv_device *dev = nullptr;
-    ibv_context *ctx = nullptr;
-    ibv_pd *pd = nullptr;
+
+Context::Context(const std::string &rpc_ip, int rpc_port, uint8_t dev_port, int gid_index)
+    : mr_on_chip_id(kMRIdOnChipStart), mgr(rpc_ip, rpc_port) {
+    ibv_context *ib_ctx = nullptr;
+    ibv_pd *ib_pd = nullptr;
     ibv_port_attr port_attr;
 
-    // get device names in the system
-    int device_num;
-    struct ibv_device **device_list = ibv_get_device_list(&device_num);
-    if (!device_list) {
-        LOG(ERROR) << "failed to get IB devices list";
-        goto CreateResourcesError;
+    int num_devices = 0;
+    struct ibv_device **dev_list = ibv_get_device_list(&num_devices);
+
+    // Traverse the device list
+    int ports_to_discover = dev_port;
+
+    for (int dev_i = 0; dev_i < num_devices; dev_i++) {
+        ib_ctx = ibv_open_device(dev_list[dev_i]);
+        if (!ib_ctx) {
+            LOG(ERROR) << "Failed to open dev " + std::to_string(dev_i);
+        }
+
+        struct ibv_device_attr device_attr;
+        memset(&device_attr, 0, sizeof(device_attr));
+        if (ibv_query_device(ib_ctx, &device_attr) != 0) {
+            LOG(ERROR) << "Failed to query device " << std::to_string(dev_i);
+        }
+
+        for (uint8_t port_i = 1; port_i <= device_attr.phys_port_cnt; port_i++) {
+            // Count this port only if it is enabled
+            if (ibv_query_port(ib_ctx, port_i, &port_attr) != 0) {
+                LOG(ERROR) << "Failed to query port " << std::to_string(port_i) << " on device "
+                           << ib_ctx->device->name;
+            }
+
+            if (port_attr.phys_state != IBV_PORT_ACTIVE && port_attr.phys_state != IBV_PORT_ACTIVE_DEFER) {
+                continue;
+            }
+
+            if (ports_to_discover == 0) {
+                LOG(INFO) << "Max gid: " << port_attr.gid_tbl_len;
+                this->dev_index = dev_i;
+                this->ctx = ib_ctx;
+                this->port = port_i;
+                goto finish_query_port;
+            }
+
+            ports_to_discover--;
+        }
+
+        if (ibv_close_device(ib_ctx) != 0) {
+            LOG(ERROR) << "Failed to close device " << ib_ctx->device->name;
+        }
     }
+finish_query_port:
+    ibv_free_device_list(dev_list);
 
-    // if there isn't any IB device in host
-    if (!device_num) {
-        LOG(INFO) << "No IB device found!";
-        goto CreateResourcesError;
-    }
-
-    if (dev_index >= device_num) {
-        LOG(INFO) << "Dev index is out of range!";
-        goto CreateResourcesError;
-    }
-
-    dev = device_list[dev_index];
-
-    // get device handle
-    ctx = ibv_open_device(dev);
-    if (!ctx) {
-        LOG(ERROR) << "failed to open device";
-        goto CreateResourcesError;
-    }
-    /* We are now done with device list, free it */
-    ibv_free_device_list(device_list);
-    device_list = nullptr;
-
-    // query port properties
-    if (ibv_query_port(ctx, port, &port_attr)) {
-        LOG(ERROR) << "ibv_query_port failed";
-        goto CreateResourcesError;
-    }
-
-    // allocate Protection Domain
-    pd = ibv_alloc_pd(ctx);
-    if (!pd) {
+    // allocate protection domain
+    ib_pd = ibv_alloc_pd(ctx);
+    if (!ib_pd) {
         LOG(ERROR) << "ibv_alloc_pd failed";
-        goto CreateResourcesError;
     }
 
-    if (ibv_query_gid(ctx, port, gid_index, &this->gid)) {
-        LOG(INFO) << "Max gid: " << port_attr.gid_tbl_len;
-        LOG(ERROR) << "could not get gid for port: " << port << ", gid_index: " << gid_index;
-        goto CreateResourcesError;
-    }
-
-    // Success :)
-    this->dev_index = dev_index;
+    this->pd = ib_pd;
     this->gid_index = gid_index;
-    this->port = port;
-    this->ctx = ctx;
-    this->pd = pd;
     this->lid = port_attr.lid;
+    ibv_query_gid(ctx, port, gid_index, &this->gid);
 
     // check device memory support
     checkDMSupported();
-    return;
-
-CreateResourcesError:
-    LOG(ERROR) << "Error Encountered, Cleanup ...";
-
-    if (pd) ibv_dealloc_pd(pd);
-    if (ctx) ibv_close_device(ctx);
-    if (device_list) ibv_free_device_list(device_list);
 }
 
 void Context::checkDMSupported() {
+#ifdef NO_EX_VERBS
+    return;
+#else
     ibv_query_device_ex_input input;
     ibv_device_attr_ex attrs;
     memset(&input, 0, sizeof(input));
@@ -92,18 +88,10 @@ void Context::checkDMSupported() {
     }
     device_memory_size = attrs.max_dm_size;
     LOG(INFO) << "NIC Device Memory is " << device_memory_size / 1024 << "KB";
-}
-
-Context::~Context() {
-#ifndef NO_DESTRUCT
-    if (pd && ibv_dealloc_pd(pd)) {
-        LOG(ERROR) << "ibv_dealloc_pd failed: " << strerror(errno);
-    }
-    if (ctx && ibv_close_device(ctx)) {
-        LOG(ERROR) << "ibv_close_device failed";
-    }
 #endif
 }
+
+Context::~Context() {}
 
 ibv_mr *Context::createMR(void *addr, uint64_t size, bool on_chip, bool odp, bool mw_binding) {
     // If not on_chip, addr should be a pre-allocated buffer.
@@ -115,7 +103,7 @@ ibv_mr *Context::createMR(void *addr, uint64_t size, bool on_chip, bool odp, boo
         ibv_mr *mr = ibv_reg_mr(pd, (void *)addr, size, flag);
 
         if (!mr) LOG(ERROR) << "Memory registration failed";
-
+        mgr.putMRInfo(mr_id++, MRInfo{ true, true, mr->rkey, (uint64_t)mr->addr, mr->length });
         return mr;
     } else {
         return createMROnChip(addr, size);
@@ -123,6 +111,9 @@ ibv_mr *Context::createMR(void *addr, uint64_t size, bool on_chip, bool odp, boo
 }
 
 ibv_mr *Context::createMROnChip(void *addr, uint64_t size) {
+#ifdef NO_EX_VERBS
+    return nullptr;
+#else
     std::ignore = addr;
     ibv_alloc_dm_attr dm_attr;
     memset(&dm_attr, 0, sizeof(ibv_alloc_dm_attr));
@@ -130,72 +121,71 @@ ibv_mr *Context::createMROnChip(void *addr, uint64_t size) {
     ibv_dm *dm = ibv_alloc_dm(ctx, &dm_attr);
     rt_assert_ptr(dm, "ibv_alloc_dm failed");
 
-    ibv_mr *mr = ibv_reg_dm_mr(
-        pd, dm, 0, size,
-        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC);
+    ibv_mr *mr = ibv_reg_dm_mr(pd, dm, 0, size,
+                               IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE |
+                                   IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_ZERO_BASED);
 
-    rt_assert_ptr(mr, "ibv_reg_dm_mr failed");
+    rt_assert_ptr(mr, "ibv_reg_dm_mr failed " + std::string(strerror(errno)));
 
     char *buf = (char *)malloc(size);
     memset(buf, 0, size);
     ibv_memcpy_to_dm(dm, 0, buf, 0);
     free(buf);
+    mgr.putMRInfo(mr_on_chip_id++, MRInfo{ true, true, mr->rkey, (uint64_t)mr->addr, mr->length });
     return mr;
+#endif  // NO_EX_VERBS
 }
 
 ibv_cq *Context::createCQ(int cqe, void *cq_ctx, ibv_comp_channel *channel) {
     // if ctx != nullptr, then it will be in ret->context
     // if channel != nullptr, then event-based things will be used.
-    // create a full-functional ex cq.
-    // including completion timestamp etc.
-    ibv_cq_init_attr_ex attr;
-    memset(&attr, 0, sizeof(attr));
-    attr.cqe = cqe;
-    attr.cq_context = cq_ctx;
-    attr.channel = channel;
-    attr.comp_vector = 0;
-    attr.wc_flags = IBV_CREATE_CQ_SUP_WC_FLAGS;
-    ibv_cq *ret = ibv_cq_ex_to_cq(ibv_create_cq_ex(ctx, &attr));
+    // create a full-functional cq.
+    ibv_cq *ret = ibv_create_cq(this->ctx, cqe, cq_ctx, channel, 0);
     rt_assert_ptr(ret, "Create CQ error");
     return ret;
 }
 
 ibv_srq *Context::createSRQ(int queue_depth, int sgl_size) {
     // shared receive queue, can be used by multiple QPs.
-    ibv_srq_init_attr_ex attr;
+    ibv_srq_init_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.attr.max_wr = queue_depth;
     attr.attr.max_sge = sgl_size;
-    attr.pd = pd;
-    // TODO: XRC domain?
-    ibv_srq *ret = ibv_create_srq_ex(ctx, &attr);
+    ibv_srq *ret = ibv_create_srq(pd, &attr);
     rt_assert_ptr(ret, "Create SRQ error");
     return ret;
 }
 
 QP Context::createQP(ibv_qp_type mode, ibv_cq *send_cq, ibv_cq *recv_cq, ibv_srq *srq, int queue_depth, int sgl_size,
                      uint32_t max_inline_data) {
-    ibv_qp_init_attr_ex attr;
+    ibv_qp_init_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.qp_type = mode;
     attr.sq_sig_all = 0;
     attr.send_cq = send_cq;
     attr.recv_cq = recv_cq;
     attr.srq = srq;
-    attr.pd = pd;
-    attr.send_ops_flags = IBV_QP_EX_WITH_SEND;
-    attr.comp_mask |= IBV_QP_INIT_ATTR_PD | IBV_QP_INIT_ATTR_SEND_OPS_FLAGS;
 
     attr.cap.max_send_wr = queue_depth;
     attr.cap.max_recv_wr = queue_depth;
     attr.cap.max_send_sge = sgl_size;
     attr.cap.max_recv_sge = sgl_size;
     attr.cap.max_inline_data = max_inline_data;
-    ibv_qp *qp = ibv_create_qp_ex(ctx, &attr);
+    ibv_qp *qp = ibv_create_qp(pd, &attr);
     if (qp == nullptr) {
         LOG(ERROR) << "Create QP error: " << strerror(errno);
     }
-    QP ret = QP(qp, this);
+
+    int id = qp_id++;
+    QP ret = QP(qp, this, id);
+
+    QPInfo info;
+    info.valid = true;
+    info.qpn = qp->qp_num;
+    info.lid = this->lid;
+    memcpy(info.gid, this->gid.raw, 16);
+    mgr.putQPInfo(id, info);
+
     return ret;
 }
 
@@ -205,6 +195,9 @@ QP Context::createQP(ibv_qp_type mode, ibv_cq *cq, ibv_srq *srq, int queue_depth
 }
 
 void Context::printDeviceInfoEx() {
+#ifdef NO_EX_VERBS
+    return;
+#else
     ibv_query_device_ex_input input;
     ibv_device_attr_ex attrs;
     memset(&input, 0, sizeof(input));
@@ -235,6 +228,7 @@ void Context::printDeviceInfoEx() {
     LOG(INFO) << "Tag matching Max rendezvous header: " << attrs.tm_caps.max_rndv_hdr_size;
     LOG(INFO) << "Tag matching Max number of outstanding operations: " << attrs.tm_caps.max_ops;
     LOG(INFO) << "Tag matching Max number of tags: " << attrs.tm_caps.max_num_tags;
+#endif
 }
 
 void Context::fillAhAttr(ibv_ah_attr *attr, uint32_t remote_lid, const uint8_t *remote_gid) {
@@ -252,4 +246,27 @@ void Context::fillAhAttr(ibv_ah_attr *attr, uint32_t remote_lid, const uint8_t *
     attr->grh.sgid_index = gid_index;
     attr->grh.traffic_class = 0;
 }
+
+QPInfo Context::getQPInfo(const std::string &ctx_ip, int ctx_port, int qp_id) {
+    auto ip_port_pair = ctx_ip + ":" + std::to_string(ctx_port);
+    if (!mgr_clients.exists(ip_port_pair)) {
+        std::lock_guard<std::mutex> lock(mgr_clients_mutex);
+        if (!mgr_clients.exists(ip_port_pair)) {
+            mgr_clients.put(ip_port_pair, ManagerClient(ctx_ip, ctx_port));
+        }
+    }
+    return mgr_clients.get(ip_port_pair).getQPInfo(qp_id);
+}
+
+MRInfo Context::getMRInfo(const std::string &ctx_ip, int ctx_port, int mr_id) {
+    auto ip_port_pair = ctx_ip + ":" + std::to_string(ctx_port);
+    if (!mgr_clients.exists(ip_port_pair)) {
+        std::lock_guard<std::mutex> lock(mgr_clients_mutex);
+        if (!mgr_clients.exists(ip_port_pair)) {
+            mgr_clients.put(ip_port_pair, ManagerClient(ctx_ip, ctx_port));
+        }
+    }
+    return mgr_clients.get(ip_port_pair).getMRInfo(mr_id);
+}
+
 };  // namespace rdma
