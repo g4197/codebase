@@ -73,10 +73,7 @@ target_link_libraries(
 	utils
 )
 
-add_executable(
-	test_rdma
-	${PROJECT_SOURCE_DIR}/tests/test_rdma.cpp
-)
+add_executable(test_rdma ${PROJECT_SOURCE_DIR}/tests/test_rdma.cpp)
 
 target_link_libraries(
 	test_rdma
@@ -84,3 +81,6 @@ target_link_libraries(
 	utils
 	rpc
 )
+
+add_executable(test_cm ${PROJECT_SOURCE_DIR}/tests/test_cm.cpp)
+target_link_libraries(test_cm rdma rdmacm utils rpc)

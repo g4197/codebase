@@ -58,10 +58,11 @@ public:
     ManagerClient(const std::string &ip, int port) : cli_(new rpc::client(ip, port)) {}
 
     std::string get(const std::string &key) {
-        LOG(INFO) << "Sending get " << key;
+        DLOG(INFO) << "Sending get " << key;
         if (!cache_.exists(key)) {
             cache_.put(key, cli_->call("get", key).as<std::string>());
         }
+        DLOG(INFO) << "Sending get finished";
         return cache_.get(key);
     }
 

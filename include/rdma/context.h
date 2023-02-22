@@ -10,13 +10,17 @@
 namespace rdma {
 
 struct Context {
-    // GIDs are currently used only for RoCE. This default value works for most
-    // clusters, but we need a more robust GID selection method. Some observations:
-    //  * On physical clusters, gid_index = 0 always works (in my experience)
-    //  * On VM clusters (AWS/KVM), gid_index = 0 does not work, gid_index = 1 works
-    //  * Mellanox's `show_gids` script lists all GIDs on all NICs
-    Context(const std::string &rpc_ip, int rpc_port, uint8_t dev_port = 0, int gid_index = 0);
+    // RoCE v1: gid = 2
+    // RoCE v2: gid = 3
+    // normal: gid = 0 or 1
+    enum { kGIDAuto = -1 };
+    enum { kInfiniBand, kRoCEv2 };
+    // If proto == kRoCEv2, ipv4_subnet is required
+    Context(const std::string &rpc_ip, int rpc_port, uint8_t dev_port = 0, int gid_index = kGIDAuto,
+            int proto = kInfiniBand, const char *ipv4_subnet = nullptr);
     ~Context();
+
+    int identifyGID(ibv_context *ctx, uint8_t port, int proto, const char *ipv4_subnet = nullptr);
 
     static constexpr int kQueueDepth = 128;
     ibv_mr *createMR(void *addr, uint64_t size, bool on_chip = false, bool odp = false, bool mw_binding = false);
@@ -27,6 +31,7 @@ struct Context {
     QP createQP(ibv_qp_type mode, ibv_cq *cq, ibv_srq *srq = nullptr, int queue_depth = kQueueDepth, int sgl_size = 1,
                 uint32_t max_inline_data = 0);
     void fillAhAttr(ibv_ah_attr *attr, uint32_t remote_lid, const uint8_t *remote_gid);
+    void fillAhAttr(ibv_ah_attr *attr, const QPInfo &qp_info);
 
     QPInfo getQPInfo(const std::string &ctx_ip, int ctx_port, int qp_id);
     MRInfo getMRInfo(const std::string &ctx_ip, int ctx_port, int mr_id);
@@ -44,7 +49,7 @@ struct Context {
     std::atomic<int> mr_id;
     std::atomic<int> mr_on_chip_id;
 
-    ManagerServer mgr;
+    ManagerServer *mgr;
 
     SimpleKV<std::string, ManagerClient> mgr_clients;
     std::mutex mgr_clients_mutex;

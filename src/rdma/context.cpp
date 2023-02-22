@@ -7,8 +7,9 @@
 
 namespace rdma {
 
-Context::Context(const std::string &rpc_ip, int rpc_port, uint8_t dev_port, int gid_index)
-    : mr_on_chip_id(kMRIdOnChipStart), mgr(rpc_ip, rpc_port) {
+Context::Context(const std::string &rpc_ip, int rpc_port, uint8_t dev_port, int gid_index, int proto,
+                 const char *ipv4_subnet)
+    : mr_on_chip_id(kMRIdOnChipStart), mgr(new ManagerServer(rpc_ip, rpc_port)) {
     ibv_context *ib_ctx = nullptr;
     ibv_pd *ib_pd = nullptr;
     ibv_port_attr port_attr;
@@ -43,7 +44,7 @@ Context::Context(const std::string &rpc_ip, int rpc_port, uint8_t dev_port, int 
             }
 
             if (ports_to_discover == 0) {
-                LOG(INFO) << "Max gid: " << port_attr.gid_tbl_len;
+                LOG(INFO) << "Device name: " << ib_ctx->device->name << " Max gid: " << port_attr.gid_tbl_len;
                 this->dev_index = dev_i;
                 this->ctx = ib_ctx;
                 this->port = port_i;
@@ -67,12 +68,39 @@ finish_query_port:
     }
 
     this->pd = ib_pd;
-    this->gid_index = gid_index;
     this->lid = port_attr.lid;
+
+    if (gid_index == kGIDAuto) gid_index = identifyGID(ctx, port, proto, ipv4_subnet);
+    this->gid_index = gid_index;
     ibv_query_gid(ctx, port, gid_index, &this->gid);
 
     // check device memory support
     checkDMSupported();
+}
+
+int Context::identifyGID(ibv_context *ctx, uint8_t port, int proto, const char *ipv4_subnet) {
+    if (proto == kInfiniBand) return 0;
+    // RoCE v2
+    uint32_t ipv4_addr = 0xFFFFFFFF;
+    if (ipv4_subnet != nullptr) {
+        ipv4_addr = inet_addr(ipv4_subnet);
+    }
+    DLOG(INFO) << "ipv4 addr: " << ipv4_subnet << " " << ipv4_addr << " " << std::hex << ipv4_addr;
+    ibv_gid gid = { 0 }, zeroed_gid = { 0 };
+    int ret = 0;
+    // Take the max satisfied gid.
+    for (int gid_index = 0; ibv_query_gid(ctx, port, gid_index, &gid) == 0; ++gid_index) {
+        if (memcmp(&gid, &zeroed_gid, sizeof(gid)) == 0) break;
+        uint16_t *p = (uint16_t *)&(gid.raw);
+        if (*p == 0) {
+            uint32_t gid_ipv4 = *(uint32_t *)(gid.raw + 12);
+            if ((ipv4_addr & gid_ipv4) == gid_ipv4) {
+                ret = gid_index;
+                DLOG(INFO) << "Current gid index is " << gid_index;
+            }
+        }
+    }
+    return ret;
 }
 
 void Context::checkDMSupported() {
@@ -103,7 +131,7 @@ ibv_mr *Context::createMR(void *addr, uint64_t size, bool on_chip, bool odp, boo
         ibv_mr *mr = ibv_reg_mr(pd, (void *)addr, size, flag);
 
         if (!mr) LOG(ERROR) << "Memory registration failed";
-        mgr.putMRInfo(mr_id++, MRInfo{ true, true, mr->rkey, (uint64_t)mr->addr, mr->length });
+        if (mgr) mgr->putMRInfo(mr_id++, MRInfo{ true, true, mr->rkey, (uint64_t)mr->addr, mr->length });
         return mr;
     } else {
         return createMROnChip(addr, size);
@@ -131,7 +159,7 @@ ibv_mr *Context::createMROnChip(void *addr, uint64_t size) {
     memset(buf, 0, size);
     ibv_memcpy_to_dm(dm, 0, buf, 0);
     free(buf);
-    mgr.putMRInfo(mr_on_chip_id++, MRInfo{ true, true, mr->rkey, (uint64_t)mr->addr, mr->length });
+    if (mgr) mgr->putMRInfo(mr_on_chip_id++, MRInfo{ true, true, mr->rkey, (uint64_t)mr->addr, mr->length });
     return mr;
 #endif  // NO_EX_VERBS
 }
@@ -184,7 +212,8 @@ QP Context::createQP(ibv_qp_type mode, ibv_cq *send_cq, ibv_cq *recv_cq, ibv_srq
     info.qpn = qp->qp_num;
     info.lid = this->lid;
     memcpy(info.gid, this->gid.raw, 16);
-    mgr.putQPInfo(id, info);
+
+    if (mgr) mgr->putQPInfo(id, info);
 
     return ret;
 }
@@ -228,6 +257,18 @@ void Context::printDeviceInfoEx() {
     LOG(INFO) << "Tag matching Max rendezvous header: " << attrs.tm_caps.max_rndv_hdr_size;
     LOG(INFO) << "Tag matching Max number of outstanding operations: " << attrs.tm_caps.max_ops;
     LOG(INFO) << "Tag matching Max number of tags: " << attrs.tm_caps.max_num_tags;
+
+    // gid info
+    ibv_gid gid;
+    for (int gid_index = 0; ibv_query_gid(ctx, port, gid_index, &gid) == 0; ++gid_index) {
+        char gid_str[33];
+        inet_ntop(AF_INET6, gid.raw, gid_str, 33);
+        if (strcmp(gid_str, "::") == 0) continue;      // skip invalid gid (all zero)
+        if (strcmp(gid_str, "fe80::") == 0) continue;  // skip link-local address (fe80::/10)
+        char gid_ipv4[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, gid.raw + 12, gid_ipv4, INET_ADDRSTRLEN);
+        LOG(INFO) << "GID " << gid_index << ": " << gid_str << " (possible) IPv4: " << gid_ipv4;
+    }
 #endif
 }
 
@@ -247,7 +288,12 @@ void Context::fillAhAttr(ibv_ah_attr *attr, uint32_t remote_lid, const uint8_t *
     attr->grh.traffic_class = 0;
 }
 
+void Context::fillAhAttr(ibv_ah_attr *attr, const QPInfo &qp_info) {
+    return fillAhAttr(attr, qp_info.lid, qp_info.gid);
+}
+
 QPInfo Context::getQPInfo(const std::string &ctx_ip, int ctx_port, int qp_id) {
+    if (!mgr) return QPInfo();
     auto ip_port_pair = ctx_ip + ":" + std::to_string(ctx_port);
     if (!mgr_clients.exists(ip_port_pair)) {
         std::lock_guard<std::mutex> lock(mgr_clients_mutex);
@@ -259,6 +305,7 @@ QPInfo Context::getQPInfo(const std::string &ctx_ip, int ctx_port, int qp_id) {
 }
 
 MRInfo Context::getMRInfo(const std::string &ctx_ip, int ctx_port, int mr_id) {
+    if (!mgr) return MRInfo();
     auto ip_port_pair = ctx_ip + ":" + std::to_string(ctx_port);
     if (!mgr_clients.exists(ip_port_pair)) {
         std::lock_guard<std::mutex> lock(mgr_clients_mutex);

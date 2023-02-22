@@ -97,6 +97,7 @@ bool QP::modifyToRTR(const QPInfo &remote_qp_info) {
 
 bool QP::modifyToRTS(bool rnr_retry) {
     if (this->qp->qp_type == IBV_QPT_UD) {
+        DLOG(INFO) << "Modify UD to RTS";
         struct ibv_qp_attr attr;
         memset(&attr, 0, sizeof(attr));
 
@@ -154,6 +155,7 @@ bool QP::modifyToRTS(bool rnr_retry) {
 }
 
 bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, ibv_ah *ah, uint32_t remote_qpn, uint64_t send_flags) {
+    DLOG(INFO) << "UD post send";
     ibv_sge sg;
     ibv_send_wr wr;
     ibv_send_wr *bad_wr;
@@ -171,6 +173,7 @@ bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, ibv_ah *ah, uint32_
         LOG(ERROR) << "Send with RDMA_SEND failed";
         return false;
     }
+    DLOG(INFO) << "UD post send finished";
     return true;
 }
 
@@ -272,6 +275,7 @@ void QP::pollSendCQ(int num_entries, ibv_wc *wc) {
 }
 
 void QP::pollRecvCQ(int num_entries, ibv_wc *wc) {
+    DLOG(INFO) << "Poll recv CQ";
     int cnt = 0;
     do {
         cnt += ibv_poll_cq(qp->recv_cq, num_entries, wc);

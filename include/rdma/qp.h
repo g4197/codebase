@@ -23,7 +23,6 @@ struct QP {
     ibv_qp *qp;
     Context *ctx;
     int id;
-    ManagerClient *mgr_client;
 };
 }  // namespace rdma
 #endif  // RDMA_QP_H_
