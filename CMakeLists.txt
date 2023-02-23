@@ -21,7 +21,7 @@ add_compile_options(
 )
 
 add_definitions(
-	# -DNDEBUG
+	-DNDEBUG
 	# -DNO_EX_VERBS
 )
 
@@ -82,5 +82,20 @@ target_link_libraries(
 	rpc
 )
 
-add_executable(test_cm ${PROJECT_SOURCE_DIR}/tests/test_cm.cpp)
-target_link_libraries(test_cm rdma rdmacm utils rpc)
+add_executable(rpc_client ${PROJECT_SOURCE_DIR}/tests/rpc_client.cpp)
+
+target_link_libraries(
+	rpc_client
+	rdma
+	utils
+	rpc
+)
+
+add_executable(rpc_server ${PROJECT_SOURCE_DIR}/tests/rpc_server.cpp)
+
+target_link_libraries(
+	rpc_server
+	rdma
+	rpc
+	profiler
+)

@@ -24,7 +24,7 @@ struct TotalOp {
  */
 class Benchmark {
 public:
-    enum BindCoreStrategy { kNUMAUniform = -1, kNUMA0 = 0, kNUMA1 };
+    enum BindCoreStrategy { kNUMAUniform = -1, kNUMA0 = 0, kNUMA1, kNUMA2, kNUMA3 };
     template<class Function, class... Args>
     inline static Benchmark run(BindCoreStrategy strategy, uint64_t num_threads, TotalOp *total_op, Function &&f,
                                 Args &&...args) {

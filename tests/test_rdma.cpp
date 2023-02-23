@@ -7,7 +7,6 @@ int main(int argc, char **argv) {
     if (argv[1][0] == '0') {
         LOG(INFO) << "0";
         rdma::Context ctx("10.0.2.163", 31850, 0, 0);
-        ibv_mr *send_mr = ctx.createMR(nullptr, 4, true, false, false);
         char *recv_buf = new char[65536];
         ibv_mr *recv_mr = ctx.createMR(recv_buf, 65536);
         ibv_cq *cq = ctx.createCQ();
@@ -28,7 +27,6 @@ int main(int argc, char **argv) {
         char *send_buf = new char[1024];
         ibv_mr *send_mr = ctx.createMR(send_buf, 1024);
         memcpy(send_buf, "Hello World!", 13);
-        ibv_mr *recv_mr = ctx.createMR(nullptr, 4, true, false, false);
         ibv_cq *cq = ctx.createCQ();
         rdma::QP qp = ctx.createQP(IBV_QPT_UD, cq);
         LOG(INFO) << "Finish creating QP";

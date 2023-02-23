@@ -121,24 +121,24 @@ void Context::checkDMSupported() {
 
 Context::~Context() {}
 
-ibv_mr *Context::createMR(void *addr, uint64_t size, bool on_chip, bool odp, bool mw_binding) {
-    // If not on_chip, addr should be a pre-allocated buffer.
+ibv_mr *Context::createMR(int id, void *addr, uint64_t size, bool odp, bool mw_binding) {
+    // Addr should be a pre-allocated buffer.
     // odp and mw_binding are suitable for not on-chip memory.
-    if (!on_chip) {
-        int flag = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC;
-        if (odp) flag |= IBV_ACCESS_ON_DEMAND;
-        if (mw_binding) flag |= IBV_ACCESS_MW_BIND;
-        ibv_mr *mr = ibv_reg_mr(pd, (void *)addr, size, flag);
+    int flag = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC;
+    if (odp) flag |= IBV_ACCESS_ON_DEMAND;
+    if (mw_binding) flag |= IBV_ACCESS_MW_BIND;
+    ibv_mr *mr = ibv_reg_mr(pd, (void *)addr, size, flag);
 
-        if (!mr) LOG(ERROR) << "Memory registration failed";
-        if (mgr) mgr->putMRInfo(mr_id++, MRInfo{ true, true, mr->rkey, (uint64_t)mr->addr, mr->length });
-        return mr;
-    } else {
-        return createMROnChip(addr, size);
-    }
+    if (!mr) LOG(ERROR) << "createMR failed for addr: " << addr << " size: " << size << ": " << strerror(errno);
+    if (mgr) mgr->putMRInfo(id, MRInfo{ true, true, mr->rkey, (uint64_t)mr->addr, mr->length });
+    return mr;
 }
 
-ibv_mr *Context::createMROnChip(void *addr, uint64_t size) {
+ibv_mr *Context::createMR(void *addr, uint64_t size, bool odp, bool mw_binding) {
+    return createMR(mr_id++, addr, size, odp, mw_binding);
+}
+
+ibv_mr *Context::createMROnChip(int id, void *addr, uint64_t size) {
 #ifdef NO_EX_VERBS
     return nullptr;
 #else
@@ -159,9 +159,13 @@ ibv_mr *Context::createMROnChip(void *addr, uint64_t size) {
     memset(buf, 0, size);
     ibv_memcpy_to_dm(dm, 0, buf, 0);
     free(buf);
-    if (mgr) mgr->putMRInfo(mr_on_chip_id++, MRInfo{ true, true, mr->rkey, (uint64_t)mr->addr, mr->length });
+    if (mgr) mgr->putMRInfo(id, MRInfo{ true, true, mr->rkey, (uint64_t)mr->addr, mr->length });
     return mr;
 #endif  // NO_EX_VERBS
+}
+
+ibv_mr *Context::createMROnChip(void *addr, uint64_t size) {
+    return createMROnChip(mr_on_chip_id++, addr, size);
 }
 
 ibv_cq *Context::createCQ(int cqe, void *cq_ctx, ibv_comp_channel *channel) {
@@ -184,8 +188,8 @@ ibv_srq *Context::createSRQ(int queue_depth, int sgl_size) {
     return ret;
 }
 
-QP Context::createQP(ibv_qp_type mode, ibv_cq *send_cq, ibv_cq *recv_cq, ibv_srq *srq, int queue_depth, int sgl_size,
-                     uint32_t max_inline_data) {
+QP Context::createQP(int id, ibv_qp_type mode, ibv_cq *send_cq, ibv_cq *recv_cq, ibv_srq *srq, int queue_depth,
+                     int sgl_size, uint32_t max_inline_data) {
     ibv_qp_init_attr attr;
     memset(&attr, 0, sizeof(attr));
     attr.qp_type = mode;
@@ -204,8 +208,7 @@ QP Context::createQP(ibv_qp_type mode, ibv_cq *send_cq, ibv_cq *recv_cq, ibv_srq
         LOG(ERROR) << "Create QP error: " << strerror(errno);
     }
 
-    int id = qp_id++;
-    QP ret = QP(qp, this, id);
+    QP ret = QP{ qp, this, id };
 
     QPInfo info;
     info.valid = true;
@@ -218,9 +221,14 @@ QP Context::createQP(ibv_qp_type mode, ibv_cq *send_cq, ibv_cq *recv_cq, ibv_srq
     return ret;
 }
 
+QP Context::createQP(ibv_qp_type mode, ibv_cq *send_cq, ibv_cq *recv_cq, ibv_srq *srq, int queue_depth, int sgl_size,
+                     uint32_t max_inline_data) {
+    return createQP(qp_id++, mode, send_cq, recv_cq, srq, queue_depth, sgl_size, max_inline_data);
+}
+
 QP Context::createQP(ibv_qp_type mode, ibv_cq *cq, ibv_srq *srq, int queue_depth, int sgl_size,
                      uint32_t max_inline_data) {
-    return createQP(mode, cq, cq, srq, queue_depth, sgl_size, max_inline_data);
+    return createQP(qp_id++, mode, cq, cq, srq, queue_depth, sgl_size, max_inline_data);
 }
 
 void Context::printDeviceInfoEx() {

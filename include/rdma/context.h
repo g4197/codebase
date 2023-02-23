@@ -23,9 +23,14 @@ struct Context {
     int identifyGID(ibv_context *ctx, uint8_t port, int proto, const char *ipv4_subnet = nullptr);
 
     static constexpr int kQueueDepth = 128;
-    ibv_mr *createMR(void *addr, uint64_t size, bool on_chip = false, bool odp = false, bool mw_binding = false);
+    ibv_mr *createMR(int id, void *addr, uint64_t size, bool odp, bool mw_binding);
+    ibv_mr *createMR(void *addr, uint64_t size, bool odp = false, bool mw_binding = false);
+    ibv_mr *createMROnChip(void *addr, uint64_t size);
+    ibv_mr *createMROnChip(int id, void *addr, uint64_t size);
     ibv_cq *createCQ(int cqe = kQueueDepth, void *cq_ctx = nullptr, ibv_comp_channel *channel = nullptr);
     ibv_srq *createSRQ(int queue_depth = kQueueDepth, int sgl_size = 1);
+    QP createQP(int id, ibv_qp_type mode, ibv_cq *send_cq, ibv_cq *recv_cq, ibv_srq *srq = nullptr,
+                int queue_depth = kQueueDepth, int sgl_size = 1, uint32_t max_inline_data = 0);
     QP createQP(ibv_qp_type mode, ibv_cq *send_cq, ibv_cq *recv_cq, ibv_srq *srq = nullptr,
                 int queue_depth = kQueueDepth, int sgl_size = 1, uint32_t max_inline_data = 0);
     QP createQP(ibv_qp_type mode, ibv_cq *cq, ibv_srq *srq = nullptr, int queue_depth = kQueueDepth, int sgl_size = 1,
@@ -58,7 +63,6 @@ struct Context {
 
 private:
     void checkDMSupported();
-    ibv_mr *createMROnChip(void *addr, uint64_t size);
 };
 }  // namespace rdma
 

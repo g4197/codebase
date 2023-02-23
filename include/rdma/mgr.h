@@ -24,7 +24,7 @@ class ManagerServer {
 public:
     ManagerServer(const std::string &ip, int port) : srv_(ip, port) {
         srv_.bind("get", [&](const std::string &key) {
-            LOG(INFO) << "Server " << ip << ":" << port << " Received get " << key;
+            DLOG(INFO) << "Server " << ip << ":" << port << " Received get " << key;
             return kv_.get(key);
         });
         srv_.async_run(1);

@@ -28,8 +28,6 @@ inline void fillSgeWr(ibv_sge &sg, ibv_recv_wr &wr, uint64_t source, uint64_t si
     wr.num_sge = 1;
 }
 
-QP::QP(ibv_qp *qp, Context *ctx, int id) : qp(qp), ctx(ctx), id(id) {}
-
 bool QP::connect(const std::string &ctx_ip, int ctx_port, int qp_id) {
     if (qp->qp_type == IBV_QPT_UD) {
         return modifyToRTS(false);
@@ -154,7 +152,9 @@ bool QP::modifyToRTS(bool rnr_retry) {
     return true;
 }
 
-bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, ibv_ah *ah, uint32_t remote_qpn, uint64_t send_flags) {
+bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, ibv_ah *ah, uint32_t remote_qpn, uint64_t send_flags,
+              bool with_imm, int32_t imm, uint64_t wr_id) {
+    assert(qp->qp_type == IBV_QPT_UD);
     DLOG(INFO) << "UD post send";
     ibv_sge sg;
     ibv_send_wr wr;
@@ -162,15 +162,22 @@ bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, ibv_ah *ah, uint32_
 
     fillSgeWr(sg, wr, source, size, lkey);
 
-    wr.opcode = IBV_WR_SEND;
+    if (with_imm) {
+        wr.imm_data = imm;
+        wr.opcode = IBV_WR_SEND_WITH_IMM;
+    } else {
+        wr.opcode = IBV_WR_SEND;
+    }
 
+    wr.wr_id = wr_id;
     wr.wr.ud.ah = ah;
     wr.wr.ud.remote_qpn = remote_qpn;
     wr.wr.ud.remote_qkey = kUDQkey;
     wr.send_flags = send_flags;
 
-    if (ibv_post_send(qp, &wr, &bad_wr)) {
-        LOG(ERROR) << "Send with RDMA_SEND failed";
+    int ret = ibv_post_send(qp, &wr, &bad_wr);
+    if (ret) {
+        LOG(ERROR) << "Send with RDMA_SEND failed " << strerror(ret);
         return false;
     }
     DLOG(INFO) << "UD post send finished";
@@ -178,6 +185,7 @@ bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, ibv_ah *ah, uint32_
 }
 
 bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, bool with_imm, int32_t imm) {
+    assert(qp->qp_type == IBV_QPT_RC || qp->qp_type == IBV_QPT_UC);
     ibv_sge sg;
     ibv_send_wr wr;
     ibv_send_wr *bad_wr;
@@ -200,12 +208,13 @@ bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, bool with_imm, int3
 }
 
 bool QP::recv(uint64_t source, uint64_t size, uint32_t lkey, uint64_t wr_id, bool is_srq) {
+    DLOG(INFO) << "Post recv " << source << " " << size << " " << lkey;
     ibv_sge sg;
     ibv_recv_wr wr;
     ibv_recv_wr *bad_wr;
 
     fillSgeWr(sg, wr, source, size, lkey);
-    bool ret = false;
+    int ret = 0;
     if (is_srq) {
         ret = ibv_post_srq_recv(qp->srq, &wr, &bad_wr);
     } else {
@@ -213,7 +222,7 @@ bool QP::recv(uint64_t source, uint64_t size, uint32_t lkey, uint64_t wr_id, boo
         ret = ibv_post_recv(qp, &wr, &bad_wr);
     }
     if (ret) {
-        LOG(ERROR) << "Recv with RDMA_RECV failed ";
+        LOG(ERROR) << "Recv with RDMA_RECV failed " << strerror(ret);
         return false;
     }
     return true;
