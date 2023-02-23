@@ -20,9 +20,26 @@ Rpc::Rpc(RpcContext *rpc_ctx, void *context, int rpc_id) : ctx(rpc_ctx), context
         for (int i = 0; i < kSrvBufCnt; ++i) {
             new (srv_bufs + i) MsgBufPair(rpc_ctx);
         }
-        for (int i = 0; i < Context::kQueueDepth; ++i) {
-            qp.recv((uint64_t)srv_bufs[i].recv_buf->hdr, kMTU, srv_bufs[i].recv_buf->lkey, (uint64_t)(srv_bufs + i));
+
+        srv_recv_sges = new ibv_sge[kSrvBufCnt];
+        srv_recv_wrs = new ibv_recv_wr[kSrvBufCnt];
+        for (int gi = 0; gi < kRecvWrGroupCnt; ++gi) {
+            int start = gi * kRecvWrGroupSize;
+            // Chained.
+            int end = start + kRecvWrGroupSize;
+            for (int i = start; i < end; ++i) {
+                srv_recv_sges[i].addr = (uint64_t)srv_bufs[i].recv_buf->hdr;
+                srv_recv_sges[i].length = kMTU;
+                srv_recv_sges[i].lkey = srv_bufs[i].recv_buf->lkey;
+                srv_recv_wrs[i].wr_id = (uint64_t)&srv_bufs[i];
+                srv_recv_wrs[i].next = i == end - 1 ? nullptr : &srv_recv_wrs[i + 1];
+                srv_recv_wrs[i].num_sge = 1;
+                srv_recv_wrs[i].sg_list = &srv_recv_sges[i];
+            }
+            srv_recv_wr_hdrs[gi] = &srv_recv_wrs[start];
         }
+        postNextGroupRecv();
+        postNextGroupRecv();
     }
 }
 
@@ -102,6 +119,13 @@ void Rpc::runServerLoopOnce() {
     }
 }
 
+void Rpc::postNextGroupRecv() {
+    DLOG(INFO) << "postNextGroupRecv " << cur_group;
+    ibv_recv_wr *bad_wr;
+    ibv_post_recv(qp.qp, srv_recv_wr_hdrs[cur_group], &bad_wr);
+    cur_group = (cur_group + 1) % kRecvWrGroupCnt;
+}
+
 void RpcSession::send(uint8_t rpc_id, MsgBufPair *buf) {
     rpc->send(this, rpc_id, buf);
 }
@@ -112,11 +136,11 @@ void RpcSession::recv(MsgBufPair *msg) {
 
 void ReqHandle::response() {
     auto &sbuf = buf->send_buf;
-    rpc->qp.recv((uint64_t)buf->recv_buf->hdr, kMTU, buf->recv_buf->lkey, (uint64_t)buf);
 
     // sync -> batch, 800K -> 4M (reduce poll cq race)
-    if (++rpc->send_cnt >= Context::kQueueDepth / 2) {
+    if (++rpc->send_cnt >= Rpc::kRecvWrGroupSize) {
         rpc->qp.send((uint64_t)sbuf->buf, sbuf->size, sbuf->lkey, ah, src_qp, IBV_SEND_SIGNALED);
+        rpc->postNextGroupRecv();
         ibv_wc wc;
         rpc->qp.pollSendCQ(1, &wc);
         rpc->send_cnt = 0;

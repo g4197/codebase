@@ -23,10 +23,7 @@ inline std::string mr_key(int id) {
 class ManagerServer {
 public:
     ManagerServer(const std::string &ip, int port) : srv_(ip, port) {
-        srv_.bind("get", [&](const std::string &key) {
-            DLOG(INFO) << "Server " << ip << ":" << port << " Received get " << key;
-            return kv_.get(key);
-        });
+        srv_.bind("get", [&](const std::string &key) { return kv_.get(key); });
         srv_.async_run(1);
     }
 

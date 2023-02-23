@@ -98,8 +98,17 @@ struct Rpc {
 
     // Server API.
     void runServerLoopOnce();
+    void postNextGroupRecv();
     static constexpr int kSrvBufCnt = Context::kQueueDepth;
+
     MsgBufPair *srv_bufs;
+    static constexpr int kRecvWrGroupCnt = 4;
+    static constexpr int kRecvWrGroupSize = kSrvBufCnt / kRecvWrGroupCnt;
+    ibv_sge *srv_recv_sges;
+    ibv_recv_wr *srv_recv_wrs;
+    ibv_recv_wr *srv_recv_wr_hdrs[kRecvWrGroupCnt];
+    int cur_group;
+
     ReqHandle *req_handles;
     std::unordered_map<ibv_gid, ibv_ah *, GIDHash> gid_ah_map;
 

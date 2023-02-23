@@ -8,7 +8,7 @@ constexpr int server_port = 1234;
 
 using namespace rdma;
 
-int kThreads = 32;
+int kThreads = 16;
 
 int main() {
     TotalOp total_op[kThreads];
