@@ -294,25 +294,25 @@ void Context::fillAhAttr(ibv_ah_attr *attr, const QPInfo &qp_info) {
 
 QPInfo Context::getQPInfo(const std::string &ctx_ip, int ctx_port, int qp_id) {
     if (!mgr) return QPInfo();
-    return connect(ctx_ip, ctx_port).getQPInfo(qp_id);
+    return connect(ctx_ip, ctx_port)->getQPInfo(qp_id);
 }
 
 MRInfo Context::getMRInfo(const std::string &ctx_ip, int ctx_port, int mr_id) {
     if (!mgr) return MRInfo();
-    return connect(ctx_ip, ctx_port).getMRInfo(mr_id);
+    return connect(ctx_ip, ctx_port)->getMRInfo(mr_id);
 }
 
 void Context::put(const std::string &ctx_ip, int ctx_port, const std::string &key, const std::string &value) {
     if (!mgr) return;
-    return connect(ctx_ip, ctx_port).put(key, value);
+    return connect(ctx_ip, ctx_port)->put(key, value);
 }
 
-ManagerClient &Context::connect(const std::string &ctx_ip, int ctx_port) {
+ManagerClient *Context::connect(const std::string &ctx_ip, int ctx_port) {
     auto ip_port_pair = ctx_ip + ":" + std::to_string(ctx_port);
     if (!mgr_clients.exists(ip_port_pair)) {
         std::lock_guard<std::mutex> lock(mgr_clients_mutex);
         if (!mgr_clients.exists(ip_port_pair)) {
-            mgr_clients.put(ip_port_pair, ManagerClient(ctx_ip, ctx_port));
+            mgr_clients.put(ip_port_pair, new ManagerClient(ctx_ip, ctx_port));
         }
     }
     return mgr_clients.get(ip_port_pair);

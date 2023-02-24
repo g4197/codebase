@@ -57,13 +57,13 @@ struct Context {
 
     ManagerServer *mgr;
 
-    SimpleKV<std::string, ManagerClient> mgr_clients;
+    SimpleKV<std::string, ManagerClient *> mgr_clients;
     std::mutex mgr_clients_mutex;
 
     void printDeviceInfoEx();
 
 private:
-    ManagerClient &connect(const std::string &ctx_ip, int ctx_port);
+    ManagerClient *connect(const std::string &ctx_ip, int ctx_port);
     void checkDMSupported();
 };
 }  // namespace rdma

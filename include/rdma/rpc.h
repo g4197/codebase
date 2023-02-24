@@ -130,7 +130,7 @@ struct Rpc {
     static constexpr int kSrvBufCnt = Context::kQueueDepth;
 
     MsgBufPair *srv_bufs;
-    static constexpr int kRecvWrGroupCnt = 4;
+    static constexpr int kRecvWrGroupCnt = 2;
     static constexpr int kRecvWrGroupSize = kSrvBufCnt / kRecvWrGroupCnt;
     ibv_sge *srv_recv_sges;
     ibv_recv_wr *srv_recv_wrs;

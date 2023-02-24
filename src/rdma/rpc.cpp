@@ -110,7 +110,8 @@ void Rpc::runServerLoopOnce() {
         MsgBufPair *cur_pair = (MsgBufPair *)wcs[i].wr_id;
         cur_pair->recv_buf->size = wcs[i].byte_len - kUDHeaderSize;
         RpcIdentifier identifier(wcs[i].imm_data);
-        DLOG(INFO) << "Got identifier " << identifier.ctx_id << " " << identifier.qp_id << " " << identifier.rpc_id;
+        DLOG(INFO) << "Got identifier " << identifier.ctx_id << " " << (int)identifier.qp_id << " "
+                   << (int)identifier.rpc_id;
         ibv_ah *ah;
         if (id_ah_map.find(identifier) == id_ah_map.end()) {
             std::string info_str = ctx->ctx.mgr->get(identifier.key());
