@@ -6,14 +6,6 @@
 #include "rdma/context.h"
 #include "rdma/qp.h"
 
-template<>
-class std::equal_to<ibv_gid> {
-public:
-    bool operator()(const ibv_gid &gid1, const ibv_gid &gid2) const {
-        return memcmp(gid1.raw, gid2.raw, sizeof(gid1.raw)) == 0;
-    }
-};
-
 namespace rdma {
 // A simple RDMA RPC framework based on UD protocol, limited to MTU.
 // An Rpc should be used by only a single thread.
@@ -29,18 +21,53 @@ struct RpcSession;
 struct MsgBuf;
 struct Rpc;
 
-class GIDHash {
+union RpcIdentifier {
+    uint32_t raw;
+    struct {
+        uint16_t ctx_id;
+        uint8_t qp_id;
+        uint8_t rpc_id;
+    } __attribute__((packed));
+
+    RpcIdentifier() {}
+
+    RpcIdentifier(uint32_t raw) {
+        this->raw = raw;
+    }
+
+    RpcIdentifier(const RpcIdentifier &rhs, uint8_t rpc_id) {
+        this->raw = rhs.raw;
+        this->rpc_id = rpc_id;
+    }
+
+    RpcIdentifier(const std::string &key) {
+        this->raw = stoi(key.substr(3));
+        this->rpc_id = 0;
+    }
+
+    bool operator==(const RpcIdentifier &other) const {
+        return this->ctx_id == other.ctx_id && this->rpc_id == other.rpc_id;
+    }
+
+    std::string key() {
+        RpcIdentifier other(*this, 0);
+        return "id_" + std::to_string(other.raw);
+    }
+};
+
+class RpcIdentifierHash {
 public:
-    inline size_t operator()(const ibv_gid &gid) const {
-        DLOG(INFO) << "GID raw is " << *(size_t *)gid.raw << " second is " << *(size_t *)(gid.raw + 8);
-        return *(size_t *)(gid.raw + 8);
+    size_t operator()(const RpcIdentifier &id) const {
+        return id.ctx_id << 8 | id.qp_id;
     }
 };
 
 struct RpcContext {
-    RpcContext(const std::string &rpc_ip, int rpc_port, int numa = 0, uint8_t dev_port = 0,
+    // id is globally unique.
+    RpcContext(const std::string &rpc_ip, int rpc_port, int id, int numa = 0, uint8_t dev_port = 0,
                int gid_index = Context::kGIDAuto, int proto = Context::kInfiniBand, const char *ipv4_subnet = nullptr)
         : ctx(rpc_ip, rpc_port, dev_port, gid_index, proto, ipv4_subnet) {
+        this->id = id;
         this->numa = numa;
     }
 
@@ -52,6 +79,7 @@ struct RpcContext {
     MsgBuf *allocBuf();
 
     bool is_server;
+    int id;
     int numa;
     Context ctx;
     std::function<void(ReqHandle *, void *)> funcs[UINT8_MAX];
@@ -87,10 +115,10 @@ struct MsgBufPair {
 
 // Single thread without coroutine.
 struct Rpc {
-    Rpc(RpcContext *rpc_ctx, void *context, int rpc_id);
+    Rpc(RpcContext *rpc_ctx, void *context, int qp_id);
 
     // Client API.
-    RpcSession connect(const std::string &ctx_ip, int ctx_port, int rpc_id);
+    RpcSession connect(const std::string &ctx_ip, int ctx_port, int qp_id);
     void send(RpcSession *session, uint8_t rpc_id, MsgBufPair *buf);
     void runClientLoopOnce();
     bool tryRecv(MsgBufPair *msg);
@@ -110,10 +138,13 @@ struct Rpc {
     int cur_group;
 
     ReqHandle *req_handles;
-    std::unordered_map<ibv_gid, ibv_ah *, GIDHash> gid_ah_map;
+
+    // Note: RpcIdentifier's id should be 0.
+    std::unordered_map<RpcIdentifier, ibv_ah *, RpcIdentifierHash> id_ah_map;
 
     // Common.
-    ibv_wc wc[Context::kQueueDepth];
+    RpcIdentifier identifier;
+    ibv_wc wcs[Context::kQueueDepth];
     QP qp;
     int send_cnt;
     RpcContext *ctx;

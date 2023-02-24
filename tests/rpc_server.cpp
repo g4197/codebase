@@ -26,8 +26,8 @@ void gprofStartAndStop(int signum) {
 
 int main() {
     signal(SIGUSR1, gprofStartAndStop);
-    RpcContext server_ctx(server_ip, server_port);
-    server_ctx.regFunc(0, [](ReqHandle *req, void *context) {
+    RpcContext server_ctx(server_ip, server_port, 0);
+    server_ctx.regFunc(6, [](ReqHandle *req, void *context) {
         memcpy(req->buf->send_buf->buf, req->buf->recv_buf->buf, req->buf->recv_buf->size);
         req->buf->send_buf->size = req->buf->recv_buf->size;
         req->response();

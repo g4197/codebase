@@ -4,6 +4,8 @@
 #ifdef USE_GLOG
 #include <glog/logging.h>
 #else
+#include <stdarg.h>
+
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -12,6 +14,7 @@
 // but never mind because no one will frequently log in the multi-threading case.
 class LogStream {
 public:
+    static constexpr int kMaxFmtLen = 255;
     LogStream(const char *file, int line, const char *level) {
         std::string filename = std::string(file);
         size_t pos = filename.find_last_of('/');
@@ -32,6 +35,16 @@ public:
         return *this;
     }
 
+    inline LogStream &operator()(const char *format, ...) {
+        char va_buf[1 + kMaxFmtLen];
+        va_list args;
+        va_start(args, format);
+        sprintf(va_buf, format, args);
+        va_end(args);
+        ss_ << va_buf;
+        return *this;
+    }
+
 private:
     std::stringstream ss_;
 };
@@ -43,6 +56,10 @@ class NullStream {
 public:
     template<typename T>
     inline NullStream &operator<<(const T &) {
+        return *this;
+    }
+
+    inline NullStream &operator()(const char *, ...) {
         return *this;
     }
 };

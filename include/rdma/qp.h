@@ -7,6 +7,8 @@
 
 namespace rdma {
 struct QP {
+    QP();
+    QP(ibv_qp *qp, Context *ctx, int id);
     bool connect(const std::string &ctx_ip, int ctx_port, int qp_id);
     bool modifyToRTR(const QPInfo &remote_qp_info);
     bool modifyToRTS(bool rnr_retry = false);
@@ -23,6 +25,7 @@ struct QP {
     ibv_qp *qp;
     Context *ctx;
     int id;
+    QPInfo info;
 };
 }  // namespace rdma
 #endif  // RDMA_QP_H_

@@ -21,7 +21,7 @@ add_compile_options(
 )
 
 add_definitions(
-	-DNDEBUG
+	# -DNDEBUG
 	# -DNO_EX_VERBS
 )
 

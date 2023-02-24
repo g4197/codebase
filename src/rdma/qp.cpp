@@ -28,6 +28,15 @@ inline void fillSgeWr(ibv_sge &sg, ibv_recv_wr &wr, uint64_t source, uint64_t si
     wr.num_sge = 1;
 }
 
+QP::QP() {}
+
+QP::QP(ibv_qp *qp, Context *ctx, int id) : qp(qp), ctx(ctx), id(id) {
+    info.valid = true;
+    info.qpn = qp->qp_num;
+    info.lid = ctx->lid;
+    memcpy(info.gid, ctx->gid.raw, sizeof(ibv_gid));
+}
+
 bool QP::connect(const std::string &ctx_ip, int ctx_port, int qp_id) {
     if (qp->qp_type == IBV_QPT_UD) {
         return modifyToRTS(false);

@@ -40,6 +40,7 @@ struct Context {
 
     QPInfo getQPInfo(const std::string &ctx_ip, int ctx_port, int qp_id);
     MRInfo getMRInfo(const std::string &ctx_ip, int ctx_port, int mr_id);
+    void put(const std::string &ctx_ip, int ctx_port, const std::string &key, const std::string &value);
 
     uint8_t dev_index;
     uint8_t port;
@@ -62,6 +63,7 @@ struct Context {
     void printDeviceInfoEx();
 
 private:
+    ManagerClient &connect(const std::string &ctx_ip, int ctx_port);
     void checkDMSupported();
 };
 }  // namespace rdma

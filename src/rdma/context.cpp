@@ -208,16 +208,8 @@ QP Context::createQP(int id, ibv_qp_type mode, ibv_cq *send_cq, ibv_cq *recv_cq,
         LOG(ERROR) << "Create QP error: " << strerror(errno);
     }
 
-    QP ret = QP{ qp, this, id };
-
-    QPInfo info;
-    info.valid = true;
-    info.qpn = qp->qp_num;
-    info.lid = this->lid;
-    memcpy(info.gid, this->gid.raw, 16);
-
-    if (mgr) mgr->putQPInfo(id, info);
-
+    QP ret = QP(qp, this, id);
+    if (mgr) mgr->putQPInfo(id, ret.info);
     return ret;
 }
 
@@ -291,7 +283,7 @@ void Context::fillAhAttr(ibv_ah_attr *attr, uint32_t remote_lid, const uint8_t *
     attr->is_global = 1;
     memcpy(&attr->grh.dgid, remote_gid, 16);
     attr->grh.flow_label = 0;
-    attr->grh.hop_limit = 1;  // Won't leave the local subnet
+    attr->grh.hop_limit = 4;  // larger to handle larger cluster like pengcheng.
     attr->grh.sgid_index = gid_index;
     attr->grh.traffic_class = 0;
 }
@@ -302,18 +294,20 @@ void Context::fillAhAttr(ibv_ah_attr *attr, const QPInfo &qp_info) {
 
 QPInfo Context::getQPInfo(const std::string &ctx_ip, int ctx_port, int qp_id) {
     if (!mgr) return QPInfo();
-    auto ip_port_pair = ctx_ip + ":" + std::to_string(ctx_port);
-    if (!mgr_clients.exists(ip_port_pair)) {
-        std::lock_guard<std::mutex> lock(mgr_clients_mutex);
-        if (!mgr_clients.exists(ip_port_pair)) {
-            mgr_clients.put(ip_port_pair, ManagerClient(ctx_ip, ctx_port));
-        }
-    }
-    return mgr_clients.get(ip_port_pair).getQPInfo(qp_id);
+    return connect(ctx_ip, ctx_port).getQPInfo(qp_id);
 }
 
 MRInfo Context::getMRInfo(const std::string &ctx_ip, int ctx_port, int mr_id) {
     if (!mgr) return MRInfo();
+    return connect(ctx_ip, ctx_port).getMRInfo(mr_id);
+}
+
+void Context::put(const std::string &ctx_ip, int ctx_port, const std::string &key, const std::string &value) {
+    if (!mgr) return;
+    return connect(ctx_ip, ctx_port).put(key, value);
+}
+
+ManagerClient &Context::connect(const std::string &ctx_ip, int ctx_port) {
     auto ip_port_pair = ctx_ip + ":" + std::to_string(ctx_port);
     if (!mgr_clients.exists(ip_port_pair)) {
         std::lock_guard<std::mutex> lock(mgr_clients_mutex);
@@ -321,7 +315,7 @@ MRInfo Context::getMRInfo(const std::string &ctx_ip, int ctx_port, int mr_id) {
             mgr_clients.put(ip_port_pair, ManagerClient(ctx_ip, ctx_port));
         }
     }
-    return mgr_clients.get(ip_port_pair).getMRInfo(mr_id);
+    return mgr_clients.get(ip_port_pair);
 }
 
 };  // namespace rdma

@@ -24,7 +24,13 @@ class ManagerServer {
 public:
     ManagerServer(const std::string &ip, int port) : srv_(ip, port) {
         srv_.bind("get", [&](const std::string &key) { return kv_.get(key); });
+        srv_.bind("put", [&](const std::string &key, const std::string &value) {
+            DLOG(INFO) << "receive put " << key;
+            kv_.put(key, value);
+            return 0;
+        });
         srv_.async_run(1);
+        DLOG(INFO) << "Listening on " << ip << ":" << port;
     }
 
     ~ManagerServer() {
@@ -43,6 +49,10 @@ public:
         put(mr_key(id), std::string((char *)&info, sizeof(MRInfo)));
     }
 
+    std::string get(const std::string &key) {
+        return kv_.get(key);
+    }
+
 private:
     rpc::server srv_;
     SimpleKV<std::string, std::string> kv_;
@@ -54,6 +64,10 @@ public:
 
     ManagerClient(const std::string &ip, int port) : cli_(new rpc::client(ip, port)) {}
 
+    ~ManagerClient() {
+        delete cli_;
+    }
+
     std::string get(const std::string &key) {
         DLOG(INFO) << "Sending get " << key;
         if (!cache_.exists(key)) {
@@ -61,6 +75,12 @@ public:
         }
         DLOG(INFO) << "Sending get finished";
         return cache_.get(key);
+    }
+
+    void put(const std::string &key, const std::string &value) {
+        DLOG(INFO) << "put " << key;
+        cli_->call("put", key, value);
+        DLOG(INFO) << "put finished";
     }
 
     QPInfo getQPInfo(int id) {

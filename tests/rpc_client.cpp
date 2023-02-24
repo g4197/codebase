@@ -13,7 +13,7 @@ int kThreads = 16;
 int main() {
     TotalOp total_op[kThreads];
     Benchmark::run(Benchmark::kNUMA0, kThreads, total_op, [&]() {
-        RpcContext client_ctx(client_ip, client_port + my_thread_id);
+        RpcContext client_ctx(client_ip, client_port + my_thread_id, 1 + my_thread_id);
         Rpc rpc(&client_ctx, nullptr, 0);
         RpcSession session = rpc.connect(server_ip, server_port, 0);
         MsgBufPair buf(&client_ctx);
@@ -25,7 +25,7 @@ int main() {
             total_op[my_thread_id].ops++;
             memcpy(buf.send_buf->buf, &cur, sizeof(cur));
             buf.send_buf->size = sizeof(cur);
-            rpc.send(&session, 0, &buf);
+            rpc.send(&session, 6, &buf);
             rpc.recv(&buf);
             if (cur != *(uint64_t *)buf.recv_buf->buf) {
                 LOG(FATAL) << "cur = " << cur << ", recv = " << *(uint64_t *)buf.recv_buf->buf;
