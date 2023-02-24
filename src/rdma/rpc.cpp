@@ -85,7 +85,7 @@ void Rpc::runClientLoopOnce() {
     for (int i = 0; i < finished; ++i) {
         MsgBufPair *cur_pair = (MsgBufPair *)wcs[i].wr_id;
         cur_pair->recv_buf->size = wcs[i].byte_len - kUDHeaderSize;
-        cur_pair->finished = true;
+        cur_pair->finished.store(true, std::memory_order_release);
     }
 }
 
@@ -112,7 +112,8 @@ void Rpc::runServerLoopOnce() {
         RpcIdentifier identifier(wcs[i].imm_data);
         DLOG(INFO) << "Got identifier " << identifier.ctx_id << " " << (int)identifier.qp_id << " "
                    << (int)identifier.rpc_id;
-        ibv_ah *ah;
+        ibv_ah *ah = nullptr;
+        uint32_t qpn = 0;
         if (id_ah_map.find(identifier) == id_ah_map.end()) {
             std::string info_str = ctx->ctx.mgr->get(identifier.key());
             QPInfo info;
@@ -120,15 +121,17 @@ void Rpc::runServerLoopOnce() {
             ibv_ah_attr attr;
             ctx->ctx.fillAhAttr(&attr, info);
             ah = ibv_create_ah(ctx->ctx.pd, &attr);
+            qpn = info.qpn;
             if (!ah) {
                 LOG(FATAL) << "Failed to create ah " << strerror(errno);
             }
-            id_ah_map[identifier] = ah;
+            id_ah_map[identifier] = std::make_pair(ah, qpn);
         } else {
-            ah = id_ah_map[identifier];
+            ah = id_ah_map[identifier].first;
+            qpn = id_ah_map[identifier].second;
         }
 
-        ReqHandle handle{ this, cur_pair, ah, wcs[i].src_qp };
+        ReqHandle handle{ this, cur_pair, ah, qpn };
         ctx->funcs[identifier.rpc_id](&handle, context);
     }
 }

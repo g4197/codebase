@@ -140,7 +140,7 @@ struct Rpc {
     ReqHandle *req_handles;
 
     // Note: RpcIdentifier's id should be 0.
-    std::unordered_map<RpcIdentifier, ibv_ah *, RpcIdentifierHash> id_ah_map;
+    std::unordered_map<RpcIdentifier, std::pair<ibv_ah *, uint32_t>, RpcIdentifierHash> id_ah_map;
 
     // Common.
     RpcIdentifier identifier;
