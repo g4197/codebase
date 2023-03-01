@@ -55,6 +55,7 @@ RpcSession Rpc::connect(const std::string &ctx_ip, int ctx_port, int qp_id) {
     QPInfo qp_info = ctx->ctx.getQPInfo(ctx_ip, ctx_port, qp_id);
     ibv_ah_attr ah_attr;
     ctx->ctx.fillAhAttr(&ah_attr, qp_info);
+    session.rpc = this;
     session.ah = ibv_create_ah(ctx->ctx.pd, &ah_attr);
     session.qpn = qp_info.qpn;
     return session;

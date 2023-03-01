@@ -237,6 +237,91 @@ bool QP::recv(uint64_t source, uint64_t size, uint32_t lkey, uint64_t wr_id, boo
     return true;
 }
 
+bool QP::read(uint64_t source, uint64_t dest, uint64_t size, uint32_t lkey, uint32_t rkey, uint64_t send_flags,
+              uint64_t wr_id) {
+    assert(qp->qp_type == IBV_QPT_RC || qp->qp_type == IBV_QPT_UC);
+    ibv_sge sg;
+    ibv_send_wr wr;
+    ibv_send_wr *bad_wr;
+
+    fillSgeWr(sg, wr, source, size, lkey);
+    wr.wr.rdma.remote_addr = dest;
+    wr.wr.rdma.rkey = rkey;
+    wr.opcode = IBV_WR_RDMA_READ;
+    wr.send_flags = send_flags;
+    wr.wr_id = wr_id;
+
+    if (ibv_post_send(qp, &wr, &bad_wr)) {
+        LOG(ERROR) << "Send with RDMA_READ failed";
+        return false;
+    }
+    return true;
+}
+
+bool QP::write(uint64_t source, uint64_t dest, uint64_t size, uint32_t lkey, uint32_t rkey, uint64_t send_flags,
+               uint64_t wr_id) {
+    assert(qp->qp_type == IBV_QPT_RC || qp->qp_type == IBV_QPT_UC);
+    ibv_sge sg;
+    ibv_send_wr wr;
+    ibv_send_wr *bad_wr;
+
+    fillSgeWr(sg, wr, source, size, lkey);
+    wr.wr.rdma.remote_addr = dest;
+    wr.wr.rdma.rkey = rkey;
+    wr.opcode = IBV_WR_RDMA_WRITE;
+    wr.send_flags = send_flags;
+    wr.wr_id = wr_id;
+
+    if (ibv_post_send(qp, &wr, &bad_wr)) {
+        LOG(ERROR) << "Send with RDMA_READ failed";
+        return false;
+    }
+    return true;
+}
+
+bool QP::faa(uint64_t source, uint64_t dest, uint64_t delta, uint32_t lkey, uint32_t rkey) {
+    assert(qp->qp_type == IBV_QPT_RC || qp->qp_type == IBV_QPT_UC);
+    ibv_sge sg;
+    ibv_send_wr wr;
+    ibv_send_wr *bad_wr;
+
+    fillSgeWr(sg, wr, source, sizeof(uint64_t), lkey);
+    wr.wr.atomic.remote_addr = dest;
+    wr.wr.atomic.rkey = rkey;
+    wr.wr.atomic.compare_add = delta;
+    wr.opcode = IBV_WR_ATOMIC_FETCH_AND_ADD;
+    wr.send_flags = IBV_SEND_SIGNALED;
+
+    if (ibv_post_send(qp, &wr, &bad_wr)) {
+        LOG(ERROR) << "Send with RDMA_READ failed";
+        return false;
+    }
+    return true;
+}
+
+bool QP::cas(uint64_t source, uint64_t dest, uint64_t compare, uint64_t swap, uint32_t lkey, uint32_t rkey,
+             uint64_t send_flags, uint64_t wr_id) {
+    assert(qp->qp_type == IBV_QPT_RC || qp->qp_type == IBV_QPT_UC);
+    ibv_sge sg;
+    ibv_send_wr wr;
+    ibv_send_wr *bad_wr;
+
+    fillSgeWr(sg, wr, source, sizeof(uint64_t), lkey);
+    wr.wr.atomic.remote_addr = dest;
+    wr.wr.atomic.rkey = rkey;
+    wr.wr.atomic.compare_add = compare;
+    wr.wr.atomic.swap = swap;
+    wr.opcode = IBV_WR_ATOMIC_CMP_AND_SWP;
+    wr.send_flags = send_flags;
+    wr.wr_id = wr_id;
+
+    if (ibv_post_send(qp, &wr, &bad_wr)) {
+        LOG(ERROR) << "Send with RDMA_READ failed";
+        return false;
+    }
+    return true;
+}
+
 void QP::printState() {
     struct ibv_qp_attr attr;
     struct ibv_qp_init_attr init_attr;

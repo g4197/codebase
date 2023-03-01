@@ -12,7 +12,7 @@
 
 #include <string>
 
-std::string getIP(const std::string &if_name) {
+inline std::string getIP(const std::string &if_name) {
     struct ifreq ifr;
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -25,7 +25,7 @@ std::string getIP(const std::string &if_name) {
     return std::string(inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr));
 }
 
-std::string getMac(const std::string &if_name) {
+inline std::string getMac(const std::string &if_name) {
     static struct ifreq ifr;
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
 

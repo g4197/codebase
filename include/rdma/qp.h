@@ -18,6 +18,14 @@ struct QP {
     // RC / UC send
     bool send(uint64_t source, uint64_t size, uint32_t lkey, bool with_imm = false, int32_t imm = 0);
     bool recv(uint64_t source, uint64_t size, uint32_t lkey, uint64_t wr_id = 0, bool is_srq = false);
+    bool read(uint64_t source, uint64_t dest, uint64_t size, uint32_t lkey, uint32_t rkey, uint64_t send_flags = 0,
+              uint64_t wr_id = 0);
+    bool write(uint64_t source, uint64_t dest, uint64_t size, uint32_t lkey, uint32_t rkey, uint64_t send_flags = 0,
+               uint64_t wr_id = 0);
+    bool faa(uint64_t source, uint64_t dest, uint64_t delta, uint32_t lkey, uint32_t rkey);
+    bool cas(uint64_t source, uint64_t dest, uint64_t compare, uint64_t swap, uint32_t lkey, uint32_t rkey,
+             uint64_t send_flags = 0, uint64_t wr_id = 0);
+
     void printState();
 
     void pollSendCQ(int num_entries, ibv_wc *wc);
