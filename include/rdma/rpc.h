@@ -123,7 +123,7 @@ struct Rpc {
     void send(RpcSession *session, uint8_t rpc_id, MsgBufPair *buf);
     void runClientLoopOnce();
     bool tryRecv(MsgBufPair *msg);
-    void recv(MsgBufPair *msg);
+    void recv(MsgBufPair *msg, size_t retry_times = UINT64_MAX);
 
     // Server API.
     void runServerLoopOnce();
@@ -156,7 +156,7 @@ struct Rpc {
 
 struct RpcSession {
     void send(uint8_t rpc_id, MsgBufPair *buf);
-    void recv(MsgBufPair *msg);
+    void recv(MsgBufPair *msg, size_t retry_times = UINT64_MAX);
     Rpc *rpc;
     ibv_ah *ah;
     uint32_t qpn;

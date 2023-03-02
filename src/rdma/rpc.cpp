@@ -116,18 +116,16 @@ bool Rpc::tryRecv(MsgBufPair *msg) {
     return msg->finished;
 }
 
-void Rpc::recv(MsgBufPair *msg) {
+void Rpc::recv(MsgBufPair *msg, size_t retry_times) {
     assert(!ctx->is_server);
-    while (true) {
-        for (size_t i = 0; i < 100000000ul; ++i) {
-            if (msg->finished) {
-                msg->finished = false;
-                return;
-            }
-            runClientLoopOnce();
+    for (size_t i = 0; i < retry_times; ++i) {
+        if (msg->finished) {
+            msg->finished = false;
+            return;
         }
-        LOG(INFO) << "Possible packet loss...";
+        runClientLoopOnce();
     }
+    LOG(INFO) << "Possible packet loss...";
 }
 
 void Rpc::runServerLoopOnce() {
@@ -176,8 +174,8 @@ void RpcSession::send(uint8_t rpc_id, MsgBufPair *buf) {
     rpc->send(this, rpc_id, buf);
 }
 
-void RpcSession::recv(MsgBufPair *msg) {
-    rpc->recv(msg);
+void RpcSession::recv(MsgBufPair *msg, size_t retry_times) {
+    rpc->recv(msg, retry_times);
 }
 
 void ReqHandle::response() {
