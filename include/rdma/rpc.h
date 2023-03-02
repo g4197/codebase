@@ -83,7 +83,7 @@ struct RpcContext {
     int id;
     int numa;
     Context ctx;
-    std::function<void(ReqHandle *, void *)> funcs[UINT8_MAX];
+    std::function<void(ReqHandle *, void *)> funcs[UINT8_MAX + 1];
 };
 
 constexpr int kMsgBufAlign = 64;
