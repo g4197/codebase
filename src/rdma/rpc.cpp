@@ -1,12 +1,27 @@
 #include "rdma/rpc.h"
 
+#include "utils/defs.h"
+
 namespace rdma {
+RpcContext::RpcContext(const std::string &rpc_ip, int rpc_port, int id, int numa, uint8_t dev_port, int gid_index,
+                       int proto, const char *ipv4_subnet)
+    : ctx(rpc_ip, rpc_port, dev_port, gid_index, proto, ipv4_subnet) {
+    this->id = id;
+    this->numa = numa;
+    this->is_server = false;
+
+    this->funcs[kRpcNewConnection] = [](ReqHandle *handle, void *) {
+        handle->buf->send_buf->size = 1;
+        handle->response();
+    };
+}
+
 MsgBuf *RpcContext::allocBuf() {
     MsgBuf *buf = new MsgBuf(this);
     return buf;
 }
 
-Rpc::Rpc(RpcContext *rpc_ctx, void *context, int qp_id) : ctx(rpc_ctx), context(context) {
+Rpc::Rpc(RpcContext *rpc_ctx, void *context, int qp_id) : ctx(rpc_ctx), context(context), conn_buf(rpc_ctx) {
     identifier.ctx_id = ctx->id;
     identifier.qp_id = qp_id;
     ibv_cq *send_cq = rpc_ctx->ctx.createCQ();
@@ -58,6 +73,11 @@ RpcSession Rpc::connect(const std::string &ctx_ip, int ctx_port, int qp_id) {
     session.rpc = this;
     session.ah = ibv_create_ah(ctx->ctx.pd, &ah_attr);
     session.qpn = qp_info.qpn;
+
+    // Invalidate server-side cache.
+    std::lock_guard<std::mutex> lock(conn_buf_mtx);
+    this->send(&session, kRpcNewConnection, &conn_buf);
+    this->recv(&conn_buf);
     return session;
 }
 
@@ -115,7 +135,8 @@ void Rpc::runServerLoopOnce() {
                    << (int)identifier.rpc_id;
         ibv_ah *ah = nullptr;
         uint32_t qpn = 0;
-        if (id_ah_map.find(identifier) == id_ah_map.end()) {
+        if (unlikely(identifier.rpc_id == kRpcNewConnection)) {
+            DLOG(INFO) << "New Connection";
             std::string info_str = ctx->ctx.mgr->get(identifier.key());
             QPInfo info;
             memcpy(&info, info_str.c_str(), sizeof(QPInfo));
@@ -130,6 +151,7 @@ void Rpc::runServerLoopOnce() {
         } else {
             ah = id_ah_map[identifier].first;
             qpn = id_ah_map[identifier].second;
+            assert(ah != nullptr);
         }
 
         ReqHandle handle{ this, cur_pair, ah, qpn };

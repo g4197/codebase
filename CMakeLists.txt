@@ -16,7 +16,7 @@ add_compile_options(
     -fno-strict-aliasing
 	-std=c++17
 	-march=native
-	-Og
+	-O3
 	-g
 )
 

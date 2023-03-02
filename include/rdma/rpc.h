@@ -1,5 +1,5 @@
-#ifndef RDMA_Rpc_H_
-#define RDMA_Rpc_H_
+#ifndef RDMA_RPC_H_
+#define RDMA_RPC_H_
 
 #include <unordered_map>
 
@@ -12,6 +12,7 @@ namespace rdma {
 // Server context and client context are treated differently.
 // Async requests from client are supported.
 
+constexpr uint8_t kRpcNewConnection = UINT8_MAX;
 constexpr int kMTU = 4096;
 constexpr int kUDHeaderSize = sizeof(ibv_grh);
 
@@ -46,7 +47,7 @@ union RpcIdentifier {
     }
 
     bool operator==(const RpcIdentifier &other) const {
-        return this->ctx_id == other.ctx_id && this->rpc_id == other.rpc_id;
+        return this->ctx_id == other.ctx_id && this->qp_id == other.qp_id;
     }
 
     std::string key() {
@@ -65,13 +66,13 @@ public:
 struct RpcContext {
     // id is globally unique.
     RpcContext(const std::string &rpc_ip, int rpc_port, int id, int numa = 0, uint8_t dev_port = 0,
-               int gid_index = Context::kGIDAuto, int proto = Context::kInfiniBand, const char *ipv4_subnet = nullptr)
-        : ctx(rpc_ip, rpc_port, dev_port, gid_index, proto, ipv4_subnet) {
-        this->id = id;
-        this->numa = numa;
-    }
+               int gid_index = Context::kGIDAuto, int proto = Context::kInfiniBand, const char *ipv4_subnet = nullptr);
 
     inline void regFunc(uint8_t rpc_id, std::function<void(ReqHandle *, void *)> func) {
+        if (rpc_id == kRpcNewConnection) {
+            LOG(ERROR) << "rpc_id should not be kRpcNewConnection";
+            return;
+        }
         is_server = true;
         funcs[rpc_id] = func;
     }
@@ -149,6 +150,8 @@ struct Rpc {
     int send_cnt;
     RpcContext *ctx;
     void *context;
+    MsgBufPair conn_buf;
+    std::mutex conn_buf_mtx;
 };
 
 struct RpcSession {
@@ -169,4 +172,4 @@ struct ReqHandle {
 
 }  // namespace rdma
 
-#endif  // RDMA_Rpc_H_
+#endif  // RDMA_RPC_H_
