@@ -118,10 +118,16 @@ bool Rpc::tryRecv(MsgBufPair *msg) {
 
 void Rpc::recv(MsgBufPair *msg) {
     assert(!ctx->is_server);
-    while (!msg->finished) {
-        runClientLoopOnce();
+    while (true) {
+        for (size_t i = 0; i < 100000000ul; ++i) {
+            if (msg->finished) {
+                msg->finished = false;
+                return;
+            }
+            runClientLoopOnce();
+        }
+        LOG(INFO) << "Possible packet loss...";
     }
-    msg->finished = false;
 }
 
 void Rpc::runServerLoopOnce() {
