@@ -59,7 +59,7 @@ struct Rpc {
     inline std::string shm_key(const std::string &ip, int port, int qp_id) {
         return "shm-rpc" + ip + ":" + std::to_string(port) + ":" + std::to_string(qp_id);
     }
-    static constexpr int kRingElemCnt = 32;
+    static constexpr int kRingElemCnt = 8192;
 };
 
 struct RpcSession {
@@ -71,6 +71,7 @@ struct RpcSession {
 
     // shm.
     ShmRpcRing *shm_ring;
+    // don't batch too much...
     std::vector<std::pair<uint64_t, MsgBufPair *>> tickets;
 };
 

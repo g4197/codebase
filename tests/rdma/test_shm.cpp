@@ -6,27 +6,25 @@
 
 using namespace rdma;
 
-constexpr int kThreads = 16;
+constexpr int kThreads = 1;
 int main(int argc, char **argv) {
-    Thread t(0, []() {
-        ShmRpcRing *ring = ShmRpcRing::create("123", 32);
-        uint64_t ticket = 0;
+    TotalOp total_op[kThreads];
+    atomic<bool> finished;
+    atomic<bool> sent;
+    auto bm = Benchmark::run(Benchmark::kNUMA0, kThreads, total_op, [&]() {
         while (true) {
-            ring->serverRecv(ticket);
-            ring->serverSend(ticket);
-            ++ticket;
+            total_op[my_thread_id].ops++;
+            while (sent.load(std::memory_order_acquire) == false) {}
+            sent.store(false, std::memory_order_release);
+            finished.store(true, std::memory_order_release);
         }
     });
-    sleep(1);
-    TotalOp total_op[kThreads];
-    Benchmark::run(Benchmark::kNUMA0, kThreads, total_op, [&]() {
-        ShmRpcRing *ring = ShmRpcRing::open("123", 32);
-        MsgBuf buf;
-        buf.size = 4;
+    Thread t(0, [&]() {
         while (true) {
-            uint64_t cur = ring->clientSend(1, &buf);
-            ring->clientRecv(&buf, cur);
-            total_op[my_thread_id - 1].ops++;
+            sent.store(true, std::memory_order_release);
+            while (finished.load(std::memory_order_acquire) == false) {}
+            finished.store(false, std::memory_order_release);
         }
-    }).printTputAndJoin();
+    });
+    bm.printTputAndJoin();
 }

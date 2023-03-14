@@ -56,7 +56,7 @@ struct ShmRpcRing {
         ShmRpcRingSlot *slot = &slots[idx(cur)];
         slot->rpc_id = rpc_id;
         slot->recv_buf = *send_buf;
-        slot->turn()->fetch_add(1);
+        slot->turn()->fetch_add(1, std::memory_order_release);
         slot->finished()->store(false);
         slot->turn()->fetch_add(1, std::memory_order_release);
         return cur;
@@ -67,7 +67,7 @@ struct ShmRpcRing {
         while (slot->finished()->load(std::memory_order_acquire) == false) {}
         recv_buf->size = slot->send_buf.size;
         memcpy(recv_buf->buf, slot->send_buf.buf, slot->send_buf.size);
-        slot->finished()->store(false);
+        slot->finished()->store(false, std::memory_order_release);
     }
 
     inline bool clientTryRecv(MsgBuf *recv_buf, uint64_t ticket) {
@@ -77,7 +77,7 @@ struct ShmRpcRing {
         }
         recv_buf->size = slot->send_buf.size;
         memcpy(recv_buf->buf, slot->send_buf.buf, slot->send_buf.size);
-        slot->finished()->store(false);
+        slot->finished()->store(false, std::memory_order_release);
         return true;
     }
 
@@ -95,7 +95,7 @@ struct ShmRpcRing {
 
     inline void serverSend(uint64_t ticket) {
         ShmRpcRingSlot *slot = &slots[idx(ticket)];
-        slot->finished()->store(true);
+        slot->finished()->store(true, std::memory_order_release);
     }
 
     inline ShmRpcRingSlot *get(uint64_t ticket) {

@@ -102,9 +102,9 @@ RpcSession Rpc::connect(const std::string &ctx_ip, int ctx_port, int qp_id) {
 
 void Rpc::send(RpcSession *session, uint8_t rpc_id, MsgBufPair *buf) {
     assert(!ctx->is_server);
+    uint64_t ticket = session->shm_ring->clientSend(rpc_id, buf->send_buf);
+    session->tickets.push_back(std::make_pair(ticket, buf));
     if (session->shm_ring != nullptr) {
-        uint64_t ticket = session->shm_ring->clientSend(rpc_id, buf->send_buf);
-        session->tickets.push_back(std::make_pair(ticket, buf));
     } else {
         auto &sbuf = buf->send_buf;
         auto &rbuf = buf->recv_buf;
@@ -137,9 +137,13 @@ void Rpc::handleQPResponses() {
 
 void Rpc::handleSHMResponses(RpcSession *session) {
     if (session->shm_ring != nullptr) {
-        for (auto &p : session->tickets) {
+        for (auto it = session->tickets.begin(); it != session->tickets.end();) {
+            auto &p = *it;
             if (session->shm_ring->clientTryRecv(p.second->recv_buf, p.first)) {
                 p.second->finished.store(true, std::memory_order_release);
+                it = session->tickets.erase(it);
+            } else {
+                ++it;
             }
         }
     }
