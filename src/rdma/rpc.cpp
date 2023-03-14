@@ -6,6 +6,8 @@ namespace rdma {
 RpcContext::RpcContext(const std::string &rpc_ip, int rpc_port, int id, int numa, uint8_t dev_port, int gid_index,
                        int proto, const char *ipv4_subnet)
     : ctx(rpc_ip, rpc_port, dev_port, gid_index, proto, ipv4_subnet) {
+    this->my_ip = rpc_ip;
+    this->my_port = rpc_port;
     this->id = id;
     this->numa = numa;
     this->is_server = false;
@@ -57,51 +59,74 @@ Rpc::Rpc(RpcContext *rpc_ctx, void *context, int qp_id) : ctx(rpc_ctx), context(
         }
         postNextGroupRecv();
         postNextGroupRecv();
+
+        DLOG(INFO) << "Initialize shm buffer";
+        shm_ring = ShmRpcRing::create(shm_key(ctx->my_ip, ctx->my_port, qp_id), kRingElemCnt);
+        if (posix_memalign((void **)&shm_bufs, kMsgBufAlign, sizeof(MsgBuf) * kRingElemCnt)) {
+            LOG(FATAL) << "Failed to allocate memory for shm buffers";
+        }
+
+        for (int i = 0; i < kRingElemCnt; ++i) {
+            new (shm_bufs + i) MsgBufPair(shm_ring->get(i), i);
+        }
     }
 }
 
 RpcSession Rpc::connect(const std::string &ctx_ip, int ctx_port, int qp_id) {
     assert(!ctx->is_server);
     RpcSession session;
-    // Exchange connection info.
-    std::string qp_info_str((char *)(&qp.info), sizeof(QPInfo));
-    ctx->ctx.put(ctx_ip, ctx_port, identifier.key(), qp_info_str);
+    memset(&session, 0, sizeof(RpcSession));
+    if (ctx_ip == this->ctx->my_ip) {
+        // Same machine, use shared memory.
+        session.rpc = this;
+        session.shm_ring = ShmRpcRing::open(shm_key(ctx_ip, ctx_port, qp_id), kRingElemCnt);
+    } else {
+        // Exchange connection info.
+        std::string qp_info_str((char *)(&qp.info), sizeof(QPInfo));
+        ctx->ctx.put(ctx_ip, ctx_port, identifier.key(), qp_info_str);
 
-    QPInfo qp_info = ctx->ctx.getQPInfo(ctx_ip, ctx_port, qp_id);
-    ibv_ah_attr ah_attr;
-    ctx->ctx.fillAhAttr(&ah_attr, qp_info);
-    session.rpc = this;
-    session.ah = ibv_create_ah(ctx->ctx.pd, &ah_attr);
-    session.qpn = qp_info.qpn;
+        QPInfo qp_info = ctx->ctx.getQPInfo(ctx_ip, ctx_port, qp_id);
+        ibv_ah_attr ah_attr;
+        ctx->ctx.fillAhAttr(&ah_attr, qp_info);
+        session.rpc = this;
+        session.ah = ibv_create_ah(ctx->ctx.pd, &ah_attr);
+        session.qpn = qp_info.qpn;
 
-    // Invalidate server-side cache.
-    std::lock_guard<std::mutex> lock(conn_buf_mtx);
-    this->send(&session, kRpcNewConnection, &conn_buf);
-    this->recv(&conn_buf);
+        // Invalidate server-side cache.
+        std::lock_guard<std::mutex> lock(conn_buf_mtx);
+        this->send(&session, kRpcNewConnection, &conn_buf);
+        this->recv(&conn_buf);
+    }
     return session;
 }
 
 void Rpc::send(RpcSession *session, uint8_t rpc_id, MsgBufPair *buf) {
     assert(!ctx->is_server);
-    auto &sbuf = buf->send_buf;
-    auto &rbuf = buf->recv_buf;
-    qp.recv((uint64_t)rbuf->hdr, kMTU, rbuf->lkey, (uint64_t)buf);
-
-    // batch
-    if (++send_cnt == Context::kQueueDepth) {
-        qp.send((uint64_t)sbuf->buf, sbuf->size, sbuf->lkey, session->ah, session->qpn, IBV_SEND_SIGNALED, true,
-                RpcIdentifier(this->identifier, rpc_id).raw, (uint64_t)buf);
-        qp.pollSendCQ(1, wcs);
-        send_cnt = 0;
+    if (session->shm_ring != nullptr) {
+        uint64_t ticket = session->shm_ring->clientSend(rpc_id, buf->send_buf);
+        session->tickets.push_back(std::make_pair(ticket, buf));
     } else {
-        qp.send((uint64_t)sbuf->buf, sbuf->size, sbuf->lkey, session->ah, session->qpn, 0, true,
-                RpcIdentifier(this->identifier, rpc_id).raw, (uint64_t)buf);
+        auto &sbuf = buf->send_buf;
+        auto &rbuf = buf->recv_buf;
+        qp.recv((uint64_t)rbuf->hdr, kMTU, rbuf->lkey, (uint64_t)buf);
+
+        // batch
+        if (++send_cnt == Context::kQueueDepth) {
+            qp.send((uint64_t)sbuf->buf, sbuf->size, sbuf->lkey, session->ah, session->qpn, IBV_SEND_SIGNALED, true,
+                    RpcIdentifier(this->identifier, rpc_id).raw, (uint64_t)buf);
+            qp.pollSendCQ(1, wcs);
+            send_cnt = 0;
+        } else {
+            qp.send((uint64_t)sbuf->buf, sbuf->size, sbuf->lkey, session->ah, session->qpn, 0, true,
+                    RpcIdentifier(this->identifier, rpc_id).raw, (uint64_t)buf);
+        }
     }
+    buf->session = session;
 }
 
-void Rpc::runClientLoopOnce() {
-    assert(!ctx->is_server);
+void Rpc::handleQPResponses() {
     // poll recv CQ.
+    assert(!ctx->is_server);
     int finished = ibv_poll_cq(qp.qp->recv_cq, Context::kQueueDepth, wcs);
     for (int i = 0; i < finished; ++i) {
         MsgBufPair *cur_pair = (MsgBufPair *)wcs[i].wr_id;
@@ -110,9 +135,20 @@ void Rpc::runClientLoopOnce() {
     }
 }
 
+void Rpc::handleSHMResponses(RpcSession *session) {
+    if (session->shm_ring != nullptr) {
+        for (auto &p : session->tickets) {
+            if (session->shm_ring->clientTryRecv(p.second->recv_buf, p.first)) {
+                p.second->finished.store(true, std::memory_order_release);
+            }
+        }
+    }
+}
+
 bool Rpc::tryRecv(MsgBufPair *msg) {
     assert(!ctx->is_server);
-    runClientLoopOnce();
+    handleQPResponses();
+    handleSHMResponses(msg->session);
     return msg->finished;
 }
 
@@ -123,13 +159,19 @@ void Rpc::recv(MsgBufPair *msg, size_t retry_times) {
             msg->finished = false;
             return;
         }
-        runClientLoopOnce();
+        handleQPResponses();
+        handleSHMResponses(msg->session);
     }
     LOG(INFO) << "Possible packet loss...";
 }
 
 void Rpc::runServerLoopOnce() {
     assert(ctx->is_server);
+    handleQPRequests();
+    handleSHMRequests();
+}
+
+void Rpc::handleQPRequests() {
     int finished = ibv_poll_cq(qp.qp->recv_cq, Context::kQueueDepth, wcs);
     for (int i = 0; i < finished; ++i) {
         MsgBufPair *cur_pair = (MsgBufPair *)wcs[i].wr_id;
@@ -158,8 +200,17 @@ void Rpc::runServerLoopOnce() {
             assert(ah != nullptr);
         }
 
-        ReqHandle handle{ this, cur_pair, ah, qpn };
+        ReqHandle handle{ this, cur_pair, ah, qpn, ReqHandle::kQP };
         ctx->funcs[identifier.rpc_id](&handle, context);
+    }
+}
+
+void Rpc::handleSHMRequests() {
+    while (shm_ring->serverTryRecv(shm_ticket)) {
+        ShmRpcRingSlot *slot = shm_ring->get(shm_ticket);
+        ReqHandle handle{ this, &shm_bufs[shm_ticket % kRingElemCnt], nullptr, 0, ReqHandle::kSHM };
+        ctx->funcs[slot->rpc_id](&handle, context);
+        ++shm_ticket;
     }
 }
 
@@ -179,17 +230,21 @@ void RpcSession::recv(MsgBufPair *msg, size_t retry_times) {
 }
 
 void ReqHandle::response() {
-    auto &sbuf = buf->send_buf;
-
-    // sync -> batch, 800K -> 4M (reduce poll cq race)
-    if (++rpc->send_cnt >= Rpc::kRecvWrGroupSize) {
-        rpc->qp.send((uint64_t)sbuf->buf, sbuf->size, sbuf->lkey, ah, src_qp, IBV_SEND_SIGNALED);
-        rpc->postNextGroupRecv();
-        ibv_wc wc;
-        rpc->qp.pollSendCQ(1, &wc);
-        rpc->send_cnt = 0;
+    if (type == kQP) {
+        auto &sbuf = buf->send_buf;
+        // sync -> batch, 800K -> 4M (reduce poll cq race)
+        if (++rpc->send_cnt >= Rpc::kRecvWrGroupSize) {
+            rpc->qp.send((uint64_t)sbuf->buf, sbuf->size, sbuf->lkey, ah, src_qp, IBV_SEND_SIGNALED);
+            rpc->postNextGroupRecv();
+            ibv_wc wc;
+            rpc->qp.pollSendCQ(1, &wc);
+            rpc->send_cnt = 0;
+        } else {
+            rpc->qp.send((uint64_t)sbuf->buf, sbuf->size, sbuf->lkey, ah, src_qp, 0);
+        }
     } else {
-        rpc->qp.send((uint64_t)sbuf->buf, sbuf->size, sbuf->lkey, ah, src_qp, 0);
+        assert(type == kSHM);
+        rpc->shm_ring->serverSend(this->buf->ticket);
     }
 }
 

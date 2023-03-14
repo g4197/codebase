@@ -16,7 +16,7 @@ add_compile_options(
     -fno-strict-aliasing
 	-std=c++17
 	-march=native
-	-O3
+	-Og
 	-g
 )
 
@@ -38,6 +38,7 @@ target_link_libraries(
 	rdma
 	ibverbs
 	pthread
+	rt
 )
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/rpclib)
