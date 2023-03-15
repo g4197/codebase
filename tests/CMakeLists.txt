@@ -27,11 +27,11 @@ target_link_libraries(
 )
 
 add_executable(test_shm ${PROJECT_SOURCE_DIR}/tests/rdma/test_shm.cpp)
-
 target_link_libraries(
 	test_shm
 	rdma
 	utils
 	rpc
-	profiler
 )
+
+add_subdirectory(think)

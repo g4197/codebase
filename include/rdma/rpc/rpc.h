@@ -72,7 +72,7 @@ struct RpcSession {
     // shm.
     ShmRpcRing *shm_ring;
     // don't batch too much...
-    std::vector<std::pair<uint64_t, MsgBufPair *>> tickets;
+    std::vector<std::pair<ShmRpcRingSlot *, MsgBufPair *>> tickets;
 };
 
 struct ReqHandle {

@@ -89,7 +89,7 @@ struct RpcContext {
     std::function<void(ReqHandle *, void *)> funcs[UINT8_MAX + 1];
 };
 
-constexpr int kMsgBufAlign = 64;
+constexpr int kMsgBufAlign = 16;
 struct alignas(kMsgBufAlign) MsgBuf {
     MsgBuf() {
         mr = nullptr;
@@ -103,19 +103,25 @@ private:
 
 public:
     friend class RpcContext;
-    uint8_t hdr[kUDHeaderSize];
-    uint8_t buf[kMTU];
     uint32_t size;
     uint32_t lkey;
     ibv_mr *mr;
+    uint8_t hdr[kUDHeaderSize];
+    uint8_t buf[kMTU];
 };
 
 struct alignas(kCacheLineSize) ShmRpcRingSlot {
-    MsgBuf send_buf;
-    MsgBuf recv_buf;
+    // cache line 0
     uint64_t turn_;
-    uint8_t rpc_id;
     bool finished_;
+    uint8_t rpc_id;
+    // For cache friendliness, don't use recv_buf.size and send_buf.size.
+    uint32_t recv_buf_size;
+    uint32_t send_buf_size;
+
+    // cache line 1
+    MsgBuf recv_buf;
+    MsgBuf send_buf;
     std::atomic<uint64_t> *turn() {
         return reinterpret_cast<std::atomic<uint64_t> *>(&turn_);
     }

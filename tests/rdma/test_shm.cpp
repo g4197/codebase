@@ -7,24 +7,28 @@
 using namespace rdma;
 
 constexpr int kThreads = 1;
+
 int main(int argc, char **argv) {
+    Thread t(0, []() {
+        ShmRpcRing *ring = ShmRpcRing::create("123", 32);
+        uint64_t ticket = 0;
+        while (true) {
+            ring->serverRecv(ticket);
+            memcpy(ring->get(ticket)->send_buf.buf, ring->get(ticket)->recv_buf.buf, ring->get(ticket)->recv_buf_size);
+            ring->serverSend(ticket);
+            ++ticket;
+        }
+    });
+    sleep(1);
     TotalOp total_op[kThreads];
-    atomic<bool> finished;
-    atomic<bool> sent;
-    auto bm = Benchmark::run(Benchmark::kNUMA0, kThreads, total_op, [&]() {
+    Benchmark::run(Benchmark::kNUMA0, kThreads, total_op, [&]() {
+        ShmRpcRing *ring = ShmRpcRing::open("123", 32);
+        MsgBuf buf;
+        buf.size = 64;
         while (true) {
-            total_op[my_thread_id].ops++;
-            while (sent.load(std::memory_order_acquire) == false) {}
-            sent.store(false, std::memory_order_release);
-            finished.store(true, std::memory_order_release);
+            uint64_t cur = ring->clientSend(1, &buf);
+            ring->clientRecv(&buf, cur);
+            total_op[my_thread_id - 1].ops++;
         }
-    });
-    Thread t(0, [&]() {
-        while (true) {
-            sent.store(true, std::memory_order_release);
-            while (finished.load(std::memory_order_acquire) == false) {}
-            finished.store(false, std::memory_order_release);
-        }
-    });
-    bm.printTputAndJoin();
+    }).printTputAndJoin();
 }

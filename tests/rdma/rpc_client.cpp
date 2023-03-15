@@ -8,7 +8,7 @@ constexpr int server_port = 1234;
 
 using namespace rdma;
 
-int kThreads = 1;
+int kThreads = 16;
 
 int main() {
     TotalOp total_op[kThreads];
@@ -24,7 +24,7 @@ int main() {
             ++cur;
             total_op[my_thread_id].ops++;
             memcpy(buf.send_buf->buf, &cur, sizeof(cur));
-            buf.send_buf->size = 64;
+            buf.send_buf->size = 4;
             rpc.send(&session, 6, &buf);
             rpc.recv(&buf);
             if (cur != *(uint64_t *)buf.recv_buf->buf) {
