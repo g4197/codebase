@@ -34,6 +34,21 @@ struct QP {
     Context *ctx;
     int id;
     QPInfo info;
+
+    enum SendOperations { kSend, kSendWithImm, kRead, kWrite, kWriteWithImm, kFAA, kCAS, kSendOpsCnt };
+    enum RecvOperations { kRecv, kRecvOpsCnt };
+    static constexpr int send_opcode[kSendOpsCnt] = { IBV_WR_SEND,
+                                                      IBV_WR_SEND_WITH_IMM,
+                                                      IBV_WR_RDMA_READ,
+                                                      IBV_WR_RDMA_WRITE,
+                                                      IBV_WR_RDMA_WRITE_WITH_IMM,
+                                                      IBV_WR_ATOMIC_FETCH_AND_ADD,
+                                                      IBV_WR_ATOMIC_CMP_AND_SWP };
+    ibv_sge send_sge[kSendOpsCnt];
+    ibv_send_wr send_wr[kSendOpsCnt];
+    ibv_sge recv_sge[kRecvOpsCnt];
+    ibv_recv_wr recv_wr[kRecvOpsCnt];
 };
+
 }  // namespace rdma
 #endif  // RDMA_QP_H_
