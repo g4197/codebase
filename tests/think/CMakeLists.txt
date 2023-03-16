@@ -7,3 +7,13 @@ target_link_libraries(
 	rpc
 	profiler
 )
+
+add_executable(cas_faa_dm ${PROJECT_SOURCE_DIR}/tests/think/cas_faa_dm.cpp)
+
+target_link_libraries(
+	cas_faa_dm
+	rdma
+	utils
+	rpc
+	profiler
+)

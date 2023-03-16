@@ -164,8 +164,8 @@ ibv_mr *Context::createMROnChip(int id, void *addr, uint64_t size) {
 #endif  // NO_EX_VERBS
 }
 
-ibv_mr *Context::createMROnChip(void *addr, uint64_t size) {
-    return createMROnChip(mr_on_chip_id++, addr, size);
+ibv_mr *Context::createMROnChip(uint64_t size) {
+    return createMROnChip(mr_on_chip_id++, nullptr, size);
 }
 
 ibv_cq *Context::createCQ(int cqe, void *cq_ctx, ibv_comp_channel *channel) {

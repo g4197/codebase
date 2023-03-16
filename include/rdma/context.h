@@ -25,7 +25,7 @@ struct Context {
     static constexpr int kQueueDepth = 128;
     ibv_mr *createMR(int id, void *addr, uint64_t size, bool odp, bool mw_binding);
     ibv_mr *createMR(void *addr, uint64_t size, bool odp = false, bool mw_binding = false);
-    ibv_mr *createMROnChip(void *addr, uint64_t size);
+    ibv_mr *createMROnChip(uint64_t size);
     ibv_mr *createMROnChip(int id, void *addr, uint64_t size);
     ibv_cq *createCQ(int cqe = kQueueDepth, void *cq_ctx = nullptr, ibv_comp_channel *channel = nullptr);
     ibv_srq *createSRQ(int queue_depth = kQueueDepth, int sgl_size = 1);
