@@ -22,7 +22,7 @@ void gprofStartAndStop(int signum) {
     }
 }
 
-constexpr int kThreads = 16;
+constexpr int kThreads = 32;
 constexpr char kServerIP[] = "10.0.2.175";
 constexpr char kClientIP[] = "10.0.2.175";
 
@@ -52,12 +52,13 @@ int main() {
         if (!qp.connect(kServerIP, 20000, my_thread_id)) {}
         sleep(2);
         MRInfo *chip_mr_info = new MRInfo;
-        *chip_mr_info = ctx.getMRInfo(kServerIP, 20000, 0);
+        *chip_mr_info = ctx.getMRInfo(kServerIP, 20000, kMRIdOnChipStart);
 
         uint64_t cur = 0;
         while (true) {
             for (int i = 0; i < 32; ++i) {
-                qp.read((uint64_t)mr->addr + i * 64, chip_mr_info->addr, 64, mr->lkey, chip_mr_info->rkey,
+                // Read is sequenced?
+                qp.read((uint64_t)mr->addr + i * 64, chip_mr_info->addr, 4, mr->lkey, chip_mr_info->rkey,
                         IBV_SEND_SIGNALED);
                 // qp.cas((uint64_t)mr->addr, chip_mr_info.addr, cur, !cur, mr->lkey, chip_mr_info.rkey,
                 //        IBV_SEND_SIGNALED);
@@ -69,11 +70,10 @@ int main() {
         }
     });
     Thread t(1, [&]() {
+        LOG(INFO) << "Thread start " << my_thread_id;
         rdma::Context ctx(kServerIP, 20000, 1);
-        char *p = (char *)numa_alloc_onnode(131072, 0);
-        for (int i = 0; i < 131072; ++i) {
-            p[i] = 0;
-        }
+
+        char *p = (char *)numa_alloc_onnode(131072, 1);
         ibv_mr *mr = ctx.createMR(p, 131072);
         ibv_mr *chip_mr = ctx.createMROnChip(131072);
         ibv_cq *cq = ctx.createCQ();
