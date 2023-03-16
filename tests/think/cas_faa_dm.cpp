@@ -1,12 +1,28 @@
 #include <bits/stdc++.h>
+#include <signal.h>
 
+#include "gperftools/profiler.h"
 #include "stdrdma.h"
 #include "stdutils.h"
 
 using namespace std;
 using namespace rdma;
 
-constexpr int kThreads = 36;
+void gprofStartAndStop(int signum) {
+    static int isStarted = 0;
+    if (signum != SIGUSR1) return;
+    if (!isStarted) {
+        isStarted = 1;
+        ProfilerStart("prof/dm.prof");
+        fprintf(stderr, "ProfilerStart success\n");
+    } else {
+        isStarted = 0;
+        ProfilerStop();
+        fprintf(stderr, "ProfilerStop success\n");
+    }
+}
+
+constexpr int kThreads = 16;
 constexpr char kServerIP[] = "10.0.2.175";
 constexpr char kClientIP[] = "10.0.2.175";
 
@@ -22,41 +38,30 @@ inline void fillSgeWr(ibv_sge &sg, ibv_send_wr &wr, uint64_t source, uint64_t si
     wr.num_sge = 1;
 }
 
+TotalOp total_op[kThreads];
 int main() {
+    signal(SIGUSR1, gprofStartAndStop);
     atomic<int> barrier(0);
-    TotalOp total_op[kThreads];
     Benchmark bm = Benchmark::run(Benchmark::kNUMA0, kThreads, total_op, [&]() {
         rdma::Context ctx(kClientIP, 10000 + my_thread_id, 0);
         ibv_cq *cq = ctx.createCQ();
-        char *send_buf = new char[1024];
-        ibv_mr *mr = ctx.createMR(send_buf, 1024);
+        char *send_buf = new char[131072];
+        ibv_mr *mr = ctx.createMR(send_buf, 131072);
         QP qp = ctx.createQP(IBV_QPT_RC, cq);
         sleep(1);
         if (!qp.connect(kServerIP, 20000, my_thread_id)) {}
-        ++barrier;
-        while (barrier != kThreads + 1) {}
-        MRInfo chip_mr_info = ctx.getMRInfo(kServerIP, 20000, 0);
-        uint64_t cur = 0;
-        ibv_sge sg;
-        ibv_send_wr wr;
-        ibv_send_wr *bad_wr;
-        auto source = (uint64_t)(send_buf + 8 * my_thread_id);
-        auto dest = chip_mr_info.addr;
-        auto size = 8;
-        auto lkey = mr->lkey;
-        auto rkey = chip_mr_info.rkey;
-        fillSgeWr(sg, wr, source, size, lkey);
-        wr.wr.atomic.remote_addr = dest;
-        wr.wr.atomic.rkey = rkey;
+        sleep(2);
+        MRInfo *chip_mr_info = new MRInfo;
+        *chip_mr_info = ctx.getMRInfo(kServerIP, 20000, 0);
 
-        wr.opcode = IBV_WR_ATOMIC_CMP_AND_SWP;
-        wr.send_flags = IBV_SEND_SIGNALED;
-        wr.wr_id = 0;
+        uint64_t cur = 0;
         while (true) {
             for (int i = 0; i < 32; ++i) {
-                wr.wr.atomic.compare_add = cur;
-                wr.wr.atomic.swap = !cur;
-                ibv_post_send(qp.qp, &wr, &bad_wr);
+                qp.read((uint64_t)mr->addr + i * 64, chip_mr_info->addr, 64, mr->lkey, chip_mr_info->rkey,
+                        IBV_SEND_SIGNALED);
+                // qp.cas((uint64_t)mr->addr, chip_mr_info.addr, cur, !cur, mr->lkey, chip_mr_info.rkey,
+                //        IBV_SEND_SIGNALED);
+                // cur = !cur;
             }
             ibv_wc wc[32];
             qp.pollSendCQ(32, wc);
@@ -65,8 +70,12 @@ int main() {
     });
     Thread t(1, [&]() {
         rdma::Context ctx(kServerIP, 20000, 1);
-        ibv_mr *mr = ctx.createMR(new char[1024], 1024);
-        ibv_mr *chip_mr = ctx.createMROnChip(1024);
+        char *p = (char *)numa_alloc_onnode(131072, 0);
+        for (int i = 0; i < 131072; ++i) {
+            p[i] = 0;
+        }
+        ibv_mr *mr = ctx.createMR(p, 131072);
+        ibv_mr *chip_mr = ctx.createMROnChip(131072);
         ibv_cq *cq = ctx.createCQ();
         QP qp[kThreads];
         for (int i = 0; i < kThreads; ++i) {
@@ -78,11 +87,13 @@ int main() {
                 LOG(INFO) << "Connect failed";
             }
         }
-        ++barrier;
-        while (barrier != kThreads + 1) {}
+        sleep(3);
         while (true) {
             sleep(1);
         }
     });
     bm.printTputAndJoin();
+    while (true) {
+        sleep(1);
+    }
 }

@@ -4,9 +4,10 @@
 
 #include "rdma/mgr.h"
 #include "rdma/predefs.h"
+#include "utils/defs.h"
 
 namespace rdma {
-struct QP {
+struct alignas(kCacheLineSize) QP {
     QP();
     QP(ibv_qp *qp, Context *ctx, int id);
     bool connect(const std::string &ctx_ip, int ctx_port, int qp_id);
@@ -35,19 +36,11 @@ struct QP {
     int id;
     QPInfo info;
 
-    enum SendOperations { kSend, kSendWithImm, kRead, kWrite, kWriteWithImm, kFAA, kCAS, kSendOpsCnt };
-    enum RecvOperations { kRecv, kRecvOpsCnt };
-    static constexpr int send_opcode[kSendOpsCnt] = { IBV_WR_SEND,
-                                                      IBV_WR_SEND_WITH_IMM,
-                                                      IBV_WR_RDMA_READ,
-                                                      IBV_WR_RDMA_WRITE,
-                                                      IBV_WR_RDMA_WRITE_WITH_IMM,
-                                                      IBV_WR_ATOMIC_FETCH_AND_ADD,
-                                                      IBV_WR_ATOMIC_CMP_AND_SWP };
-    ibv_sge send_sge[kSendOpsCnt];
-    ibv_send_wr send_wr[kSendOpsCnt];
-    ibv_sge recv_sge[kRecvOpsCnt];
-    ibv_recv_wr recv_wr[kRecvOpsCnt];
+    ibv_sge sge;
+    ibv_send_wr send_wr;
+    ibv_recv_wr recv_wr;
+    ibv_send_wr *bad_send_wr;
+    ibv_recv_wr *bad_recv_wr;
 };
 
 }  // namespace rdma

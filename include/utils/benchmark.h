@@ -47,32 +47,27 @@ public:
     }
 
     inline void printTputAndJoin(std::string name = "") {
-        uint64_t numa = strategy_ == kNUMAUniform ? 0 : (strategy_ + 1) % numa_nodes();
-        Thread *counter_thread = new Thread(numa, [&]() {
-            uint64_t cur = 0, prev = 0;
-            while (true) {
-                cur = 0;
-                for (size_t i = 0; i < num_threads_; ++i) {
-                    cur += total_op_[i].ops;
-                }
-                if (cur - prev < 1e3) {
-                    LOG(INFO) << name << " Throughput: " << (cur - prev) << " ops/s";
-                } else if (cur - prev < 1e6) {
-                    LOG(INFO) << name << " Throughput: " << (cur - prev) / 1e3 << " Kops/s";
-                } else if (cur - prev < 1e9) {
-                    LOG(INFO) << name << " Throughput: " << (cur - prev) / 1e6 << " Mops/s";
-                } else {
-                    LOG(INFO) << name << " Throughput: " << (cur - prev) / 1e9 << " Gops/s";
-                }
-
-                prev = cur;
-                std::this_thread::sleep_for(std::chrono::seconds(1));
+        uint64_t cur = 0, prev = 0;
+        while (true) {
+            cur = 0;
+            for (size_t i = 0; i < num_threads_; ++i) {
+                cur += total_op_[i].ops;
             }
-        });
+            if (cur - prev < 1e3) {
+                LOG(INFO) << name << " Throughput: " << (cur - prev) << " ops/s";
+            } else if (cur - prev < 1e6) {
+                LOG(INFO) << name << " Throughput: " << (cur - prev) / 1e3 << " Kops/s";
+            } else if (cur - prev < 1e9) {
+                LOG(INFO) << name << " Throughput: " << (cur - prev) / 1e6 << " Mops/s";
+            } else {
+                LOG(INFO) << name << " Throughput: " << (cur - prev) / 1e9 << " Gops/s";
+            }
+            prev = cur;
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
         for (size_t i = 0; i < num_threads_; ++i) {
             threads_[i].join();
         }
-        counter_thread->join();
     }
 
 private:

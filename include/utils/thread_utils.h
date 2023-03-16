@@ -22,9 +22,11 @@ public:
         thread_ = std::thread([&] {
             my_thread_id = thread_id_;
             my_numa_id = numa_id_;
+            while (!finished_) {}
             f(args...);
         });
         bind_to_core(thread_.native_handle(), numa, core_id_);
+        finished_ = true;
     }
 
     Thread &operator=(const Thread &rhs) = delete;
@@ -61,6 +63,7 @@ private:
     int numa_id_;
     int thread_id_;
     int core_id_;
+    std::atomic<bool> finished_;
 };
 
 #endif  // THREAD_UTILS_H_

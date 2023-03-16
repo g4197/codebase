@@ -11,13 +11,6 @@ inline void fillSge(ibv_sge &sg, uint64_t source, uint64_t size, uint32_t lkey) 
     sg.lkey = lkey;
 }
 
-inline void fillSge(ibv_sge &sg, ibv_recv_wr &wr, uint64_t source, uint64_t size, uint32_t lkey) {
-    memset(&sg, 0, sizeof(sg));
-    sg.addr = (uintptr_t)source;
-    sg.length = size;
-    sg.lkey = lkey;
-}
-
 QP::QP() {}
 
 QP::QP(ibv_qp *qp, Context *ctx, int id) : qp(qp), ctx(ctx), id(id) {
@@ -27,21 +20,16 @@ QP::QP(ibv_qp *qp, Context *ctx, int id) : qp(qp), ctx(ctx), id(id) {
     memcpy(info.gid, ctx->gid.raw, sizeof(ibv_gid));
 
     // Initialize sge and wr.
-    memset(send_sge, 0, sizeof(send_sge));
-    memset(send_wr, 0, sizeof(send_wr));
-    memset(recv_sge, 0, sizeof(recv_sge));
-    memset(recv_wr, 0, sizeof(recv_wr));
-    for (int i = 0; i < kSendOpsCnt; ++i) {
-        send_wr[i].wr_id = 0;
-        send_wr[i].sg_list = &send_sge[i];
-        send_wr[i].num_sge = 1;
-    }
+    memset(&sge, 0, sizeof(sge));
+    memset(&send_wr, 0, sizeof(send_wr));
+    memset(&recv_wr, 0, sizeof(recv_wr));
+    send_wr.wr_id = 0;
+    send_wr.sg_list = &sge;
+    send_wr.num_sge = 1;
 
-    for (int i = 0; i < kRecvOpsCnt; ++i) {
-        recv_wr[i].wr_id = 0;
-        recv_wr[i].sg_list = &recv_sge[i];
-        recv_wr[i].num_sge = 1;
-    }
+    recv_wr.wr_id = 0;
+    recv_wr.sg_list = &sge;
+    recv_wr.num_sge = 1;
 }
 
 bool QP::connect(const std::string &ctx_ip, int ctx_port, int qp_id) {
@@ -172,11 +160,10 @@ bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, ibv_ah *ah, uint32_
               bool with_imm, int32_t imm, uint64_t wr_id) {
     assert(qp->qp_type == IBV_QPT_UD);
     DLOG(INFO) << "UD post send";
-    ibv_sge &sg = with_imm ? send_sge[kSendWithImm] : send_sge[kSend];
-    ibv_send_wr &wr = with_imm ? send_wr[kSendWithImm] : send_wr[kSend];
-    ibv_send_wr *bad_wr;
-    fillSge(sg, source, size, lkey);
+    ibv_send_wr &wr = send_wr;
 
+    fillSge(sge, source, size, lkey);
+    wr.opcode = with_imm ? IBV_WR_SEND_WITH_IMM : IBV_WR_SEND;
     wr.imm_data = imm;
     wr.wr_id = wr_id;
     wr.wr.ud.ah = ah;
@@ -184,7 +171,7 @@ bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, ibv_ah *ah, uint32_
     wr.wr.ud.remote_qkey = kUDQkey;
     wr.send_flags = send_flags;
 
-    int ret = ibv_post_send(qp, &wr, &bad_wr);
+    int ret = ibv_post_send(qp, &wr, &bad_send_wr);
     if (ret) {
         LOG(ERROR) << "Send with RDMA_SEND failed " << strerror(ret);
         return false;
@@ -195,14 +182,13 @@ bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, ibv_ah *ah, uint32_
 
 bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, bool with_imm, int32_t imm) {
     assert(qp->qp_type == IBV_QPT_RC || qp->qp_type == IBV_QPT_UC);
-    ibv_sge &sg = with_imm ? send_sge[kSendWithImm] : send_sge[kSend];
-    ibv_send_wr &wr = with_imm ? send_wr[kSendWithImm] : send_wr[kSend];
-    ibv_send_wr *bad_wr;
+    ibv_send_wr &wr = send_wr;
 
-    fillSge(sg, source, size, lkey);
+    fillSge(sge, source, size, lkey);
+    wr.opcode = with_imm ? IBV_WR_SEND_WITH_IMM : IBV_WR_SEND;
     wr.imm_data = imm;
     wr.send_flags = IBV_SEND_SIGNALED;
-    if (ibv_post_send(qp, &wr, &bad_wr)) {
+    if (ibv_post_send(qp, &wr, &bad_send_wr)) {
         LOG(ERROR) << "Send with RDMA_SEND failed";
         return false;
     }
@@ -211,17 +197,15 @@ bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, bool with_imm, int3
 
 bool QP::recv(uint64_t source, uint64_t size, uint32_t lkey, uint64_t wr_id, bool is_srq) {
     DLOG(INFO) << "Post recv " << source << " " << size << " " << lkey;
-    ibv_sge &sg = recv_sge[kRecv];
-    ibv_recv_wr &wr = recv_wr[kRecv];
-    ibv_recv_wr *bad_wr;
+    ibv_recv_wr &wr = recv_wr;
 
-    fillSge(sg, source, size, lkey);
+    fillSge(sge, source, size, lkey);
     int ret = 0;
     if (is_srq) {
-        ret = ibv_post_srq_recv(qp->srq, &wr, &bad_wr);
+        ret = ibv_post_srq_recv(qp->srq, &wr, &bad_recv_wr);
     } else {
         wr.wr_id = wr_id;
-        ret = ibv_post_recv(qp, &wr, &bad_wr);
+        ret = ibv_post_recv(qp, &wr, &bad_recv_wr);
     }
     if (ret) {
         LOG(ERROR) << "Recv with RDMA_RECV failed " << strerror(ret);
@@ -233,18 +217,17 @@ bool QP::recv(uint64_t source, uint64_t size, uint32_t lkey, uint64_t wr_id, boo
 bool QP::read(uint64_t source, uint64_t dest, uint64_t size, uint32_t lkey, uint32_t rkey, uint64_t send_flags,
               uint64_t wr_id) {
     assert(qp->qp_type == IBV_QPT_RC || qp->qp_type == IBV_QPT_UC);
-    ibv_sge &sg = send_sge[kRead];
-    ibv_send_wr &wr = send_wr[kRead];
-    ibv_send_wr *bad_wr;
+    ibv_send_wr &wr = send_wr;
 
-    fillSge(sg, source, size, lkey);
+    fillSge(sge, source, size, lkey);
+    wr.opcode = IBV_WR_RDMA_READ;
     wr.wr.rdma.remote_addr = dest;
     wr.wr.rdma.rkey = rkey;
     wr.send_flags = send_flags;
     wr.wr_id = wr_id;
 
-    if (ibv_post_send(qp, &wr, &bad_wr)) {
-        LOG(ERROR) << "Send with RDMA_READ failed";
+    if (ibv_post_send(qp, &send_wr, &bad_send_wr)) {
+        DLOG(ERROR) << "Send with RDMA_READ failed";
         return false;
     }
     return true;
@@ -253,17 +236,16 @@ bool QP::read(uint64_t source, uint64_t dest, uint64_t size, uint32_t lkey, uint
 bool QP::write(uint64_t source, uint64_t dest, uint64_t size, uint32_t lkey, uint32_t rkey, uint64_t send_flags,
                uint64_t wr_id) {
     assert(qp->qp_type == IBV_QPT_RC || qp->qp_type == IBV_QPT_UC);
-    ibv_sge &sg = send_sge[kWrite];
-    ibv_send_wr &wr = send_wr[kWrite];
-    ibv_send_wr *bad_wr;
+    ibv_send_wr &wr = send_wr;
 
-    fillSge(sg, source, size, lkey);
+    fillSge(sge, source, size, lkey);
+    wr.opcode = IBV_WR_RDMA_WRITE;
     wr.wr.rdma.remote_addr = dest;
     wr.wr.rdma.rkey = rkey;
     wr.send_flags = send_flags;
     wr.wr_id = wr_id;
 
-    if (ibv_post_send(qp, &wr, &bad_wr)) {
+    if (ibv_post_send(qp, &wr, &bad_send_wr)) {
         LOG(ERROR) << "Send with RDMA_READ failed";
         return false;
     }
@@ -272,17 +254,16 @@ bool QP::write(uint64_t source, uint64_t dest, uint64_t size, uint32_t lkey, uin
 
 bool QP::faa(uint64_t source, uint64_t dest, uint64_t delta, uint32_t lkey, uint32_t rkey) {
     assert(qp->qp_type == IBV_QPT_RC || qp->qp_type == IBV_QPT_UC);
-    ibv_sge &sg = send_sge[kFAA];
-    ibv_send_wr &wr = send_wr[kFAA];
-    ibv_send_wr *bad_wr;
+    ibv_send_wr &wr = send_wr;
 
-    fillSge(sg, source, sizeof(uint64_t), lkey);
+    fillSge(sge, source, sizeof(uint64_t), lkey);
+    wr.opcode = IBV_WR_ATOMIC_FETCH_AND_ADD;
     wr.wr.atomic.remote_addr = dest;
     wr.wr.atomic.rkey = rkey;
     wr.wr.atomic.compare_add = delta;
     wr.send_flags = IBV_SEND_SIGNALED;
 
-    if (ibv_post_send(qp, &wr, &bad_wr)) {
+    if (ibv_post_send(qp, &wr, &bad_send_wr)) {
         LOG(ERROR) << "Send with RDMA_READ failed";
         return false;
     }
@@ -292,11 +273,10 @@ bool QP::faa(uint64_t source, uint64_t dest, uint64_t delta, uint32_t lkey, uint
 bool QP::cas(uint64_t source, uint64_t dest, uint64_t compare, uint64_t swap, uint32_t lkey, uint32_t rkey,
              uint64_t send_flags, uint64_t wr_id) {
     assert(qp->qp_type == IBV_QPT_RC || qp->qp_type == IBV_QPT_UC);
-    ibv_sge &sg = send_sge[kCAS];
-    ibv_send_wr &wr = send_wr[kCAS];
-    ibv_send_wr *bad_wr;
+    ibv_send_wr &wr = send_wr;
 
-    fillSge(sg, source, sizeof(uint64_t), lkey);
+    fillSge(sge, source, sizeof(uint64_t), lkey);
+    wr.opcode = IBV_WR_ATOMIC_CMP_AND_SWP;
     wr.wr.atomic.remote_addr = dest;
     wr.wr.atomic.rkey = rkey;
     wr.wr.atomic.compare_add = compare;
@@ -304,7 +284,7 @@ bool QP::cas(uint64_t source, uint64_t dest, uint64_t compare, uint64_t swap, ui
     wr.send_flags = send_flags;
     wr.wr_id = wr_id;
 
-    if (ibv_post_send(qp, &wr, &bad_wr)) {
+    if (ibv_post_send(qp, &wr, &bad_send_wr)) {
         LOG(ERROR) << "Send with RDMA_READ failed";
         return false;
     }

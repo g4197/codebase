@@ -28,7 +28,7 @@
 #ifndef CITY_HASH_CRC_H_
 #define CITY_HASH_CRC_H_
 
-#include <city.h>
+#include "utils/third_party/city.h"
 
 // Hash function for a byte array.
 uint128 CityHashCrc128(const char *s, size_t len);

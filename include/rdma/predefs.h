@@ -29,7 +29,7 @@ struct QPInfo {
     uint8_t gid[16];
 };
 
-struct MRInfo {
+struct alignas(32) MRInfo {
     bool valid;
     bool on_chip;
     uint32_t rkey;

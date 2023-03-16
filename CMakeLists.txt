@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
+set(CMAKE_CXX_COMPILER g++-11)
 project (rdma-wrapper)
 
 set(PROJECT_BINARY_DIR ${PROJECT_SOURCE_DIR}/build)
@@ -16,7 +17,7 @@ add_compile_options(
     -fno-strict-aliasing
 	-std=c++17
 	-march=native
-	-O3
+	-O0
 	-g
 )
 
