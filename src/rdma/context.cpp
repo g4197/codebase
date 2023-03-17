@@ -9,7 +9,7 @@ namespace rdma {
 
 Context::Context(const std::string &rpc_ip, int rpc_port, uint8_t dev_port, int gid_index, int proto,
                  const char *ipv4_subnet)
-    : mr_on_chip_id(kMRIdOnChipStart), mgr(new ManagerServer(rpc_ip, rpc_port)) {
+    : qp_id(0), mr_id(0), mr_on_chip_id(kMROnChipIdStart), mgr(new ManagerServer(rpc_ip, rpc_port)) {
     ibv_context *ib_ctx = nullptr;
     ibv_pd *ib_pd = nullptr;
     ibv_port_attr port_attr;
@@ -209,7 +209,9 @@ QP Context::createQP(int id, ibv_qp_type mode, ibv_cq *send_cq, ibv_cq *recv_cq,
     }
 
     QP ret = QP(qp, this, id);
-    if (mgr) mgr->putQPInfo(id, ret.info);
+    if (mgr) {
+        mgr->putQPInfo(id, ret.info);
+    }
     return ret;
 }
 

@@ -1,7 +1,7 @@
 #ifndef RDMA_PREDEFS_H_
 #define RDMA_PREDEFS_H_
 
-#include <infiniband/mlx5dv.h>
+// #include <infiniband/mlx5dv.h>
 #include <infiniband/verbs.h>
 
 namespace rdma {
@@ -12,7 +12,7 @@ struct Context;
 constexpr uint32_t kUDQkey = 0x11111111;
 constexpr uint32_t kPSN = 3185;
 constexpr uint32_t kDCTAccessKey = 3185;
-constexpr int kMRIdOnChipStart = 10000000;
+constexpr int kMROnChipIdStart = 10000000;
 
 #define rt_assert_ptr(input, msg) \
     do {                          \

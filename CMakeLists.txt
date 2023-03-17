@@ -1,5 +1,4 @@
 cmake_minimum_required(VERSION 3.13)
-set(CMAKE_CXX_COMPILER g++-11)
 project (rdma-wrapper)
 
 set(PROJECT_BINARY_DIR ${PROJECT_SOURCE_DIR}/build)
@@ -23,11 +22,12 @@ add_compile_options(
 
 add_definitions(
 	-DNDEBUG
-	# -DNO_EX_VERBS
+	-DNO_EX_VERBS
 )
 
 file(GLOB RDMA_LIB_SRC ${PROJECT_SOURCE_DIR}/src/rdma/*.cpp)
-file(GLOB UTILS_LIB_SRC ${PROJECT_SOURCE_DIR}/src/utils/*.cpp ${PROJECT_SOURCE_DIR}/src/utils/*.cc)
+file(GLOB STDUTILS_LIB_SRC ${PROJECT_SOURCE_DIR}/src/utils/stdutils_defs.cpp ${PROJECT_SOURCE_DIR}/src/utils/city.cc)
+file(GLOB EXTUTILS_LIB_SRC ${PROJECT_SOURCE_DIR}/src/utils/extutils_defs.cpp)
 
 add_library(
 	rdma
@@ -46,23 +46,32 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/rpclib)
 include_directories(${PROJECT_SOURCE_DIR}/third_party/rpclib/include)
 
 add_library(
-	utils
+	stdutils
 	STATIC
-	${UTILS_LIB_SRC}
+	${STDUTILS_LIB_SRC}
 )
 
 target_link_libraries(
-	utils
+	stdutils
 	atomic
-	boost_coroutine
-	boost_context
-    memkind
 	jemalloc
-	pmem
-	memcached
 	pthread
 	numa
 )
+
+# add_library(
+# 	extutils
+# 	STATIC
+# 	${EXTUTILS_LIB_SRC}
+# )
+
+# target_link_libraries(
+# 	extutils
+# 	boost_coroutine
+# 	boost_context
+#     memkind
+# 	memcached
+# )
 
 add_executable(
 	main
@@ -72,7 +81,7 @@ add_executable(
 target_link_libraries(
 	main
 	rdma
-	utils
+	stdutils
 )
 
 add_subdirectory(tests)

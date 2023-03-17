@@ -4,6 +4,8 @@
 #include <string>
 #include <unordered_map>
 
+#include "utils/log.h"
+
 namespace rdma {
 
 // A simple concurrent KVStore, not for performance.

@@ -16,11 +16,10 @@ public:
     // Create a thread binding to NUMA numa, initializing my_thread_id and my_numa_id.
     template<class Function, class... Args>
     Thread(int numa, Function &&f, Args &&...args) {
-        thread_id_ = tot_threads++;
         numa_id_ = numa;
         core_id_ = kBindCoreOffset[numa] + (numa_tot_threads[numa]++);
         thread_ = std::thread([&] {
-            my_thread_id = thread_id_;
+            my_thread_id = tot_threads++;
             my_numa_id = numa_id_;
             while (!finished_) {}
             f(args...);
@@ -33,7 +32,6 @@ public:
 
     inline Thread &operator=(Thread &&t) noexcept {
         thread_ = std::move(t.thread_);
-        thread_id_ = t.thread_id_;
         numa_id_ = t.numa_id_;
         return *this;
     }
@@ -61,7 +59,6 @@ private:
     static std::atomic<int> numa_tot_threads[kMaxNUMANodes];
     std::thread thread_;
     int numa_id_;
-    int thread_id_;
     int core_id_;
     std::atomic<bool> finished_;
 };

@@ -227,7 +227,7 @@ bool QP::read(uint64_t source, uint64_t dest, uint64_t size, uint32_t lkey, uint
     wr.wr_id = wr_id;
 
     if (ibv_post_send(qp, &send_wr, &bad_send_wr)) {
-        DLOG(ERROR) << "Send with RDMA_READ failed";
+        LOG(ERROR) << "Send with RDMA_READ failed";
         return false;
     }
     return true;
