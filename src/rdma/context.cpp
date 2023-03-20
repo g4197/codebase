@@ -79,12 +79,14 @@ finish_query_port:
 }
 
 int Context::identifyGID(ibv_context *ctx, uint8_t port, int proto, const char *ipv4_subnet) {
-    if (proto == kInfiniBand) return 0;
-    // RoCE v2
-    uint32_t ipv4_addr = 0xFFFFFFFF;
-    if (ipv4_subnet != nullptr) {
-        ipv4_addr = inet_addr(ipv4_subnet);
+    if (ipv4_subnet == nullptr) {
+        // Infiniband: 3 % 1 = 0
+        // RoCEv2: 3 % 4 = 3
+        return 3;
     }
+
+    // RoCEv2 with IPv4
+    uint32_t ipv4_addr = inet_addr(ipv4_subnet);
     DLOG(INFO) << "ipv4 addr: " << ipv4_subnet << " " << ipv4_addr << " " << std::hex << ipv4_addr;
     ibv_gid gid = { 0 }, zeroed_gid = { 0 };
     int ret = 0;
