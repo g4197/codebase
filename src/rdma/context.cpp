@@ -303,7 +303,12 @@ QPInfo Context::getQPInfo(const std::string &ctx_ip, int ctx_port, int qp_id) {
 
 MRInfo Context::getMRInfo(const std::string &ctx_ip, int ctx_port, int mr_id) {
     if (!mgr) return MRInfo();
-    return connect(ctx_ip, ctx_port)->getMRInfo(mr_id);
+    MRInfo info;
+    memset(&info, 0, sizeof(info));
+    while (!info.valid) {
+        info = connect(ctx_ip, ctx_port)->getMRInfo(mr_id);
+    }
+    return info;
 }
 
 void Context::put(const std::string &ctx_ip, int ctx_port, const std::string &key, const std::string &value) {

@@ -10,6 +10,7 @@ namespace rdma {
 struct alignas(kCacheLineSize) QP {
     QP();
     QP(ibv_qp *qp, Context *ctx, int id);
+    QP &operator=(const QP &rhs);
     bool connect(const std::string &ctx_ip, int ctx_port, int qp_id);
     bool modifyToRTR(const QPInfo &remote_qp_info);
     bool modifyToRTS(bool rnr_retry = false);

@@ -32,6 +32,13 @@ QP::QP(ibv_qp *qp, Context *ctx, int id) : qp(qp), ctx(ctx), id(id) {
     recv_wr.num_sge = 1;
 }
 
+QP &QP::operator=(const QP &rhs) {
+    memcpy(this, &rhs, sizeof(QP));
+    this->send_wr.sg_list = &this->sge;
+    this->recv_wr.sg_list = &this->sge;
+    return *this;
+}
+
 bool QP::connect(const std::string &ctx_ip, int ctx_port, int qp_id) {
     if (qp->qp_type == IBV_QPT_UD) {
         return modifyToRTS(false);
@@ -246,7 +253,7 @@ bool QP::write(uint64_t source, uint64_t dest, uint64_t size, uint32_t lkey, uin
     wr.wr_id = wr_id;
 
     if (ibv_post_send(qp, &wr, &bad_send_wr)) {
-        LOG(ERROR) << "Send with RDMA_READ failed";
+        LOG(ERROR) << "Send with RDMA_WRITE failed";
         return false;
     }
     return true;

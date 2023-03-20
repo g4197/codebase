@@ -17,3 +17,13 @@ target_link_libraries(
 	rpc
 	profiler
 )
+
+add_executable(scalability ${PROJECT_SOURCE_DIR}/tests/think/scalability.cpp)
+
+target_link_libraries(
+	scalability
+	rdma
+	stdutils
+	rpc
+	profiler
+)
