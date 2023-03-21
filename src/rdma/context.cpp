@@ -44,7 +44,7 @@ Context::Context(const std::string &rpc_ip, int rpc_port, uint8_t dev_port, int 
             }
 
             if (ports_to_discover == 0) {
-                LOG(INFO) << "Device name: " << ib_ctx->device->name << " Max gid: " << port_attr.gid_tbl_len;
+                DLOG(INFO) << "Device name: " << ib_ctx->device->name << " Max gid: " << port_attr.gid_tbl_len;
                 this->dev_index = dev_i;
                 this->ctx = ib_ctx;
                 this->port = port_i;
@@ -117,7 +117,7 @@ void Context::checkDMSupported() {
         LOG(ERROR) << "Couldn't query device attributes";
     }
     device_memory_size = attrs.max_dm_size;
-    LOG(INFO) << "NIC Device Memory is " << device_memory_size / 1024 << "KB";
+    DLOG(INFO) << "NIC Device Memory is " << device_memory_size / 1024 << "KB";
 #endif
 }
 
@@ -296,11 +296,18 @@ void Context::fillAhAttr(ibv_ah_attr *attr, const QPInfo &qp_info) {
     return fillAhAttr(attr, qp_info.lid, qp_info.gid);
 }
 
+// Blocking operation.
 QPInfo Context::getQPInfo(const std::string &ctx_ip, int ctx_port, int qp_id) {
     if (!mgr) return QPInfo();
-    return connect(ctx_ip, ctx_port)->getQPInfo(qp_id);
+    QPInfo info;
+    memset(&info, 0, sizeof(info));
+    while (!info.valid) {
+        info = connect(ctx_ip, ctx_port)->getQPInfo(qp_id);
+    }
+    return info;
 }
 
+// Blocking operation.
 MRInfo Context::getMRInfo(const std::string &ctx_ip, int ctx_port, int mr_id) {
     if (!mgr) return MRInfo();
     MRInfo info;
