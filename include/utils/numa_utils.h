@@ -43,8 +43,8 @@ inline void bind_to_core(pthread_t native_handle, size_t numa_node, size_t numa_
 
     const std::vector<size_t> lcore_vec = get_lcores_for_numa_node(numa_node);
     if (numa_local_index >= lcore_vec.size()) {
-        LOG(ERROR) << "Requested binding to core" << numa_local_index << "(zero-indexed) on NUMA node " << numa_node
-                   << ", which has only" << lcore_vec.size() << "cores.";
+        LOG(ERROR) << "Requested binding to core " << numa_local_index << " (zero-indexed) on NUMA node " << numa_node
+                   << ", which has only " << lcore_vec.size() << " cores.";
         return;
     }
 

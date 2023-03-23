@@ -34,4 +34,12 @@ target_link_libraries(
 	rpc
 )
 
+add_executable(scalability_rpc ${PROJECT_SOURCE_DIR}/tests/rdma/scalability_rpc.cpp)
+target_link_libraries(
+	scalability_rpc
+	rdma
+	stdutils
+	rpc
+)
+
 add_subdirectory(think)

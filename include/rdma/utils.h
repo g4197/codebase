@@ -10,7 +10,7 @@
 namespace rdma {
 using namespace std;
 
-uint8_t numa_aware_nic_port(int numa_node) {
+inline uint8_t numa_aware_nic_port(int numa_node) {
     /*
      * GET the port number of IB NIC that matches param numa_node.
      * step 1. ibdev2netdev to get all NICs's net device

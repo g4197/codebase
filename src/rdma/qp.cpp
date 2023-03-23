@@ -43,11 +43,7 @@ bool QP::connect(const std::string &ctx_ip, int ctx_port, int qp_id) {
     if (qp->qp_type == IBV_QPT_UD) {
         return modifyToRTS(false);
     } else {
-        QPInfo qp_info;
-        memset(&qp_info, 0, sizeof(qp_info));
-        while (!qp_info.valid) {
-            qp_info = ctx->getQPInfo(ctx_ip, ctx_port, qp_id);
-        }
+        QPInfo qp_info = ctx->getQPInfo(ctx_ip, ctx_port, qp_id);
         return modifyToRTR(qp_info) && modifyToRTS(false);
     }
 }

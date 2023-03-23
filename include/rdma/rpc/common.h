@@ -93,11 +93,13 @@ constexpr int kMsgBufAlign = 16;
 struct alignas(kMsgBufAlign) MsgBuf {
     MsgBuf() {
         mr = nullptr;
+        size = lkey = 0;
     }
 
 private:
     MsgBuf(RpcContext *ctx) {
         mr = ctx->ctx.createMR(this->hdr, kUDHeaderSize + kMTU);
+        size = 0;
         lkey = mr->lkey;
     }
 

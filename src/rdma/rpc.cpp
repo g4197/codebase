@@ -26,6 +26,7 @@ MsgBuf *RpcContext::allocBuf() {
 Rpc::Rpc(RpcContext *rpc_ctx, void *context, int qp_id) : ctx(rpc_ctx), context(context), conn_buf(rpc_ctx) {
     identifier.ctx_id = ctx->id;
     identifier.qp_id = qp_id;
+    send_cnt = cur_group = 0;
     ibv_cq *send_cq = rpc_ctx->ctx.createCQ();
     ibv_cq *recv_cq = rpc_ctx->ctx.createCQ();
     qp = rpc_ctx->ctx.createQP(qp_id, IBV_QPT_UD, send_cq, recv_cq);
