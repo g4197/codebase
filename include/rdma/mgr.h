@@ -70,11 +70,7 @@ public:
 
     std::string get(const std::string &key) {
         DLOG(INFO) << "Sending get " << key;
-        if (!cache_.exists(key)) {
-            cache_.put(key, cli_->call("get", key).as<std::string>());
-        }
-        DLOG(INFO) << "Sending get finished";
-        return cache_.get(key);
+        return cli_->call("get", key).as<std::string>();
     }
 
     void put(const std::string &key, const std::string &value) {
@@ -107,7 +103,6 @@ public:
 
 private:
     rpc::client *cli_;
-    SimpleKV<std::string, std::string> cache_;  // Note: assume that QPInfo and MRInfo are immutable
 };
 }  // namespace rdma
 
