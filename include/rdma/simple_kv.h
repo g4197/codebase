@@ -37,6 +37,7 @@ public:
             pthread_rwlock_unlock(&kv_mutex_);
             return kv_[key];
         }
+        pthread_rwlock_unlock(&kv_mutex_);
         return null_ref_;
     }
 
