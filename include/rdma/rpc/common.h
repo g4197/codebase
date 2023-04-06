@@ -24,16 +24,18 @@ struct MsgBuf;
 struct Rpc;
 
 union RpcIdentifier {
-    uint32_t raw;
+    uint64_t raw;
     struct {
-        uint16_t ctx_id;
-        uint8_t qp_id;
+        uint32_t ctx_id;
+        uint16_t qp_id;
         uint8_t rpc_id;
     } __attribute__((packed));
 
-    RpcIdentifier() {}
+    RpcIdentifier() {
+        this->raw = 0;
+    }
 
-    RpcIdentifier(uint32_t raw) {
+    RpcIdentifier(uint64_t raw) {
         this->raw = raw;
     }
 
@@ -60,8 +62,13 @@ union RpcIdentifier {
 class RpcIdentifierHash {
 public:
     size_t operator()(const RpcIdentifier &id) const {
-        return id.ctx_id << 8 | id.qp_id;
+        return ((uint64_t)id.ctx_id) << 32 | id.qp_id;
     }
+};
+
+struct RpcHeader {
+    RpcIdentifier identifier;
+    uint64_t seq;
 };
 
 struct RpcContext {
@@ -109,7 +116,8 @@ public:
     uint32_t lkey;
     ibv_mr *mr;
     uint8_t hdr[kUDHeaderSize];
-    uint8_t buf[kMTU];
+    RpcHeader rpc_hdr;
+    uint8_t buf[kMTU - sizeof(RpcHeader)];
 };
 
 struct alignas(kCacheLineSize) ShmRpcRingSlot {
@@ -145,9 +153,9 @@ struct MsgBufPair {
     }
 
     MsgBuf *send_buf;
-    MsgBuf *recv_buf;
-    RpcSession *session;  // Used by shm communication
-    uint64_t ticket;      // Used by shm communication
+    MsgBuf *recv_buf;  // mutable because of out-of-order transmission by UD
+    RpcSession *session;
+    uint64_t ticket;  // Used by shm communication
     std::atomic<bool> finished;
 };
 

@@ -162,7 +162,6 @@ bool QP::modifyToRTS(bool rnr_retry) {
 bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, ibv_ah *ah, uint32_t remote_qpn, uint64_t send_flags,
               bool with_imm, int32_t imm, uint64_t wr_id) {
     assert(qp->qp_type == IBV_QPT_UD);
-    DLOG(INFO) << "UD post send";
     ibv_send_wr &wr = send_wr;
 
     fillSge(sge, source, size, lkey);
@@ -179,7 +178,6 @@ bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, ibv_ah *ah, uint32_
         LOG(ERROR) << "Send with RDMA_SEND failed " << strerror(ret);
         return false;
     }
-    DLOG(INFO) << "UD post send finished";
     return true;
 }
 

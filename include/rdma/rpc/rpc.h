@@ -1,6 +1,7 @@
 #ifndef RDMA_RPC_RPC_H_
 #define RDMA_RPC_RPC_H_
 
+#include <queue>
 #include <unordered_map>
 
 #include "rdma/context.h"
@@ -37,7 +38,32 @@ struct Rpc {
     ibv_recv_wr *srv_recv_wr_hdrs[kRecvWrGroupCnt];
     int cur_group;
 
-    ReqHandle *req_handles;
+    template<class T, size_t sz>
+    struct RingBuffer {
+        T req_handles[sz + 1];
+        T *ql{}, *qr{};
+        RingBuffer() {
+            ql = qr = &req_handles[0];
+        }
+        inline ReqHandle *pop() {
+            if (unlikely(ql == qr)) {
+                return nullptr;
+            }
+            T ret = *(ql++);
+            if (ql > req_handles + sz) {
+                ql = req_handles;
+            }
+            return ret;
+        }
+
+        inline void push(ReqHandle *handle) {
+            *(qr++) = handle;
+            if (qr > req_handles + sz) {
+                qr = req_handles;
+            }
+        }
+    };
+    RingBuffer<ReqHandle *, Context::kQueueDepth> req_handle_free_queue;
 
     // Note: RpcIdentifier's id should be 0.
     std::unordered_map<RpcIdentifier, std::pair<ibv_ah *, uint32_t>, RpcIdentifierHash> id_ah_map;
@@ -46,16 +72,19 @@ struct Rpc {
     RpcIdentifier identifier;
     ibv_wc wcs[Context::kQueueDepth];
     QP qp;
-    int send_cnt;
-    RpcContext *ctx;
-    void *context;
+    int send_cnt{};
+    RpcContext *ctx{};
+    void *context{};
     MsgBufPair conn_buf;
     std::mutex conn_buf_mtx;
 
+    // rpc.
+    std::unordered_map<MsgBuf *, MsgBufPair *> rcv_buf_map;  // on fly recv_buf -> MsgBufPair
+
     // shm.
-    ShmRpcRing *shm_ring;
-    uint64_t shm_ticket;
-    MsgBufPair *shm_bufs;
+    ShmRpcRing *shm_ring{};
+    uint64_t shm_ticket{};
+    MsgBufPair *shm_bufs{};
     inline std::string shm_key(const std::string &ip, int port, int qp_id) {
         return "shm-rpc" + ip + ":" + std::to_string(port) + ":" + std::to_string(qp_id);
     }
@@ -63,24 +92,32 @@ struct Rpc {
 };
 
 struct RpcSession {
+    inline RpcHeader rpcHeader(uint8_t rpc_id) {
+        return RpcHeader{ .identifier = RpcIdentifier(rpc->identifier, rpc_id), .seq = this->seq++ };
+    }
+
     void send(uint8_t rpc_id, MsgBufPair *buf);
     void recv(MsgBufPair *msg, size_t retry_times = UINT64_MAX);
-    Rpc *rpc;
-    ibv_ah *ah;
-    uint32_t qpn;
+    Rpc *rpc{};
+    ibv_ah *ah{};
+    uint32_t qpn{};
+
+    // rpc.
+    std::unordered_map<uint64_t, MsgBufPair *> seq_buf_map{};  // on fly seq -> MsgBufPair
+    uint64_t seq{};                                            // current sequence (per session).
 
     // shm.
-    ShmRpcRing *shm_ring;
+    ShmRpcRing *shm_ring{};
     // don't batch too much...
-    std::vector<std::pair<ShmRpcRingSlot *, MsgBufPair *>> tickets;
+    std::vector<std::pair<ShmRpcRingSlot *, MsgBufPair *>> tickets{};
 };
 
 struct ReqHandle {
-    Rpc *rpc;
-    MsgBufPair *buf;
-    ibv_ah *ah;
-    uint32_t src_qp;
-    enum { kQP, kSHM } type;
+    Rpc *rpc{};
+    MsgBufPair *buf{};
+    ibv_ah *ah{};
+    uint32_t src_qp{};
+    enum { kQP, kSHM } type{};
     void response();
 };
 
