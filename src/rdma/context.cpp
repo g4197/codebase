@@ -92,7 +92,7 @@ int Context::identifyGID(ibv_context *ctx, uint8_t port, int proto, const char *
     int ret = 0;
     // Take the max satisfied gid.
     for (int gid_index = 0; ibv_query_gid(ctx, port, gid_index, &gid) == 0; ++gid_index) {
-        if (memcmp(&gid, &zeroed_gid, sizeof(gid)) == 0) break;
+        if (memcmp(&gid, &zeroed_gid, sizeof(gid)) == 0) continue;
         uint16_t *p = (uint16_t *)&(gid.raw);
         if (*p == 0) {
             uint32_t gid_ipv4 = *(uint32_t *)(gid.raw + 12);
