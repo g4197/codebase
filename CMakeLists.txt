@@ -25,7 +25,17 @@ add_definitions(
 	-DNO_EX_VERBS
 )
 
-file(GLOB RDMA_LIB_SRC ${PROJECT_SOURCE_DIR}/src/rdma/*.cpp)
+if (DEFINED USE_RC_RPC)
+message("Use RC RPC")
+add_definitions(
+	-DUSE_RC_RPC
+)
+file(GLOB RDMA_LIB_SRC ${PROJECT_SOURCE_DIR}/src/rdma/context.cpp ${PROJECT_SOURCE_DIR}/src/rdma/qp.cpp ${PROJECT_SOURCE_DIR}/src/rdma/rc_rpc.cpp)
+else()
+message("Use UD RPC")
+file(GLOB RDMA_LIB_SRC ${PROJECT_SOURCE_DIR}/src/rdma/context.cpp ${PROJECT_SOURCE_DIR}/src/rdma/qp.cpp ${PROJECT_SOURCE_DIR}/src/rdma/rpc.cpp)
+endif()
+
 file(GLOB STDUTILS_LIB_SRC ${PROJECT_SOURCE_DIR}/src/utils/stdutils_defs.cpp ${PROJECT_SOURCE_DIR}/src/utils/city.cc)
 file(GLOB EXTUTILS_LIB_SRC ${PROJECT_SOURCE_DIR}/src/utils/extutils_defs.cpp)
 

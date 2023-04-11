@@ -53,8 +53,9 @@ public:
         return kv_.get(key);
     }
 
-private:
     rpc::server srv_;
+
+private:
     SimpleKV<std::string, std::string> kv_;
 };
 
@@ -100,8 +101,6 @@ public:
         memcpy(&info, value.data(), sizeof(info));
         return info;
     }
-
-private:
     rpc::client *cli_;
 };
 }  // namespace rdma

@@ -18,7 +18,8 @@ struct alignas(kCacheLineSize) QP {
     bool send(uint64_t source, uint64_t size, uint32_t lkey, ibv_ah *ah, uint32_t remote_qpn, uint64_t send_flags = 0,
               bool with_imm = false, int32_t imm = 0, uint64_t wr_id = 0);
     // RC / UC send
-    bool send(uint64_t source, uint64_t size, uint32_t lkey, bool with_imm = false, int32_t imm = 0);
+    bool send(uint64_t source, uint64_t size, uint32_t lkey, uint64_t send_flags = 0, bool with_imm = false,
+              int32_t imm = 0, uint64_t wr_id = 0);
     bool recv(uint64_t source, uint64_t size, uint32_t lkey, uint64_t wr_id = 0, bool is_srq = false);
     bool read(uint64_t source, uint64_t dest, uint64_t size, uint32_t lkey, uint32_t rkey, uint64_t send_flags = 0,
               uint64_t wr_id = 0);

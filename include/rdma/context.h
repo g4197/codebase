@@ -61,9 +61,9 @@ struct Context {
     std::mutex mgr_clients_mutex;
 
     void printDeviceInfoEx();
+    ManagerClient *connect(const std::string &ctx_ip, int ctx_port);
 
 private:
-    ManagerClient *connect(const std::string &ctx_ip, int ctx_port);
     void checkDMSupported();
 };
 }  // namespace rdma

@@ -181,14 +181,17 @@ bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, ibv_ah *ah, uint32_
     return true;
 }
 
-bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, bool with_imm, int32_t imm) {
+bool QP::send(uint64_t source, uint64_t size, uint32_t lkey, uint64_t send_flags, bool with_imm, int32_t imm,
+              uint64_t wr_id) {
     assert(qp->qp_type == IBV_QPT_RC || qp->qp_type == IBV_QPT_UC);
     ibv_send_wr &wr = send_wr;
 
     fillSge(sge, source, size, lkey);
     wr.opcode = with_imm ? IBV_WR_SEND_WITH_IMM : IBV_WR_SEND;
     wr.imm_data = imm;
-    wr.send_flags = IBV_SEND_SIGNALED;
+    wr.send_flags = send_flags;
+    wr.wr_id = wr_id;
+
     if (ibv_post_send(qp, &wr, &bad_send_wr)) {
         LOG(ERROR) << "Send with RDMA_SEND failed";
         return false;
