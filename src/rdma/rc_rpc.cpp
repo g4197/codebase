@@ -25,6 +25,7 @@ MsgBuf *RpcContext::allocBuf() {
 
 Rpc::Rpc(RpcContext *rpc_ctx, void *context, int rpc_id) : ctx(rpc_ctx), context(context), conn_buf(rpc_ctx) {
     cur_group = 0;
+    send_cnt = 0;
     this->send_cq = rpc_ctx->ctx.createCQ();
     this->recv_cq = rpc_ctx->ctx.createCQ();
 
@@ -69,18 +70,21 @@ Rpc::Rpc(RpcContext *rpc_ctx, void *context, int rpc_id) : ctx(rpc_ctx), context
             req_handle_free_queue.push(new ReqHandle);
         }
 
-        this->srv_srq = ctx->ctx.createSRQ();
+        this->srv_srq = ctx->ctx.createSRQ(kSrvBufCnt);
 
         postNextGroupRecv();
         postNextGroupRecv();
 
         ctx->ctx.mgr->srv_.bind("connect_" + std::to_string(rpc_id), [this](std::string ip, int port, int qp_id) {
+            LOG(INFO) << "conn " << ip << ":" << port << " " << qp_id;
             auto qp = new QP;
             *qp = this->ctx->ctx.createQP(IBV_QPT_RC, this->send_cq, this->recv_cq, this->srv_srq);
-            qpn_qp_map[qp->qp->qp_num] = { qp, 0 };
+            this->qpn_qp_map[qp->qp->qp_num] = { qp, 0, ip, port, qp_id };
             qp->connect(ip, port, qp_id);
             return qp->id;
         });
+
+        LOG(INFO) << ctx->my_ip << ":" << ctx->my_port << " create rpc id " << rpc_id;
     }
 }
 
@@ -96,7 +100,7 @@ RpcSession Rpc::connect(const std::string &ctx_ip, int ctx_port, int rmt_rpc_id)
     } else {
         ibv_cq *send_cq = ctx->ctx.createCQ();
         ibv_cq *recv_cq = ctx->ctx.createCQ();
-        session.qp = { new QP, 0 };
+        session.qp = { new QP, 0, ctx_ip, ctx_port, rmt_rpc_id };
         *(session.qp.qp) = ctx->ctx.createQP(IBV_QPT_RC, send_cq, recv_cq);
         // Exchange connection info.
         int rmt_qp_id =
@@ -104,6 +108,9 @@ RpcSession Rpc::connect(const std::string &ctx_ip, int ctx_port, int rmt_rpc_id)
                 ->cli_->call("connect_" + std::to_string(rmt_rpc_id), ctx->my_ip, ctx->my_port, session.qp.qp->id)
                 .as<int>();  // opposite connect me.
         session.qp.qp->connect(ctx_ip, ctx_port, rmt_qp_id);
+        LOG(INFO) << "my ip: " << this->ctx->my_ip << ":" << ctx->my_port << " id " << session.qp.qp->id
+                  << " connect to " << ctx_ip << ":" << ctx_port << " rpc id " << rmt_rpc_id;
+        session.rmt_qp_id = rmt_qp_id;
     }
     return session;
 }
@@ -120,10 +127,13 @@ void Rpc::send(RpcSession *session, uint8_t rpc_id, MsgBufPair *buf) {
         session->qp.qp->recv((uint64_t)rbuf->buf, kMTU, rbuf->lkey, (uint64_t)buf);
 
         // batch
-        if (++session->qp.send_cnt == Context::kQueueDepth) {
+        if (++session->qp.send_cnt == 1) {
             session->qp.qp->send((uint64_t)sbuf->buf, sbuf->size, sbuf->lkey, IBV_SEND_SIGNALED, true, rpc_id,
                                  (uint64_t)buf);
-            session->qp.qp->pollSendCQ(1, wcs);
+            if (!session->qp.qp->pollSendCQ(1, wcs)) {
+                LOG(INFO) << this->ctx->my_ip << ":" << this->ctx->my_port << " send to " << session->qp.oppo_ip << ":"
+                          << session->qp.oppo_port << " " << session->qp.oppo_id << " failed";
+            }
             session->qp.send_cnt = 0;
         } else {
             session->qp.qp->send((uint64_t)sbuf->buf, sbuf->size, sbuf->lkey, 0, true, rpc_id, (uint64_t)buf);
@@ -148,7 +158,8 @@ void Rpc::handleQPRequests() {
         cur_pair->recv_buf->size = wcs[i].byte_len;
         QPCnt &qp_cnt = qpn_qp_map[wcs[i].qp_num];
         uint8_t rpc_id = wcs[i].imm_data;
-        DLOG(INFO) << "Got rpc " << (int)rpc_id;
+        DLOG(INFO) << "Got rpc " << (int)rpc_id << " from " << qp_cnt.oppo_ip << ":" << qp_cnt.oppo_port << " "
+                   << qp_cnt.oppo_id;
 
         auto handle = req_handle_free_queue.pop();
         *handle = ReqHandle{ this, cur_pair, &qp_cnt, ReqHandle::kQP };
@@ -180,12 +191,14 @@ void RpcSession::send(uint8_t rpc_id, MsgBufPair *buf) {
 
 void RpcSession::handleQPResponses() {
     // poll recv CQ.
-    auto &wcs = rpc->wcs;
-    int finished = ibv_poll_cq(qp.qp->qp->recv_cq, Context::kQueueDepth, wcs);
-    for (int i = 0; i < finished; ++i) {
-        MsgBufPair *cur_pair = (MsgBufPair *)wcs[i].wr_id;
-        cur_pair->recv_buf->size = wcs[i].byte_len;
-        cur_pair->finished.store(true, std::memory_order_release);
+    if (qp.qp != nullptr) {
+        auto &wcs = rpc->wcs;
+        int finished = ibv_poll_cq(qp.qp->qp->recv_cq, Context::kQueueDepth, wcs);
+        for (int i = 0; i < finished; ++i) {
+            MsgBufPair *cur_pair = (MsgBufPair *)wcs[i].wr_id;
+            cur_pair->recv_buf->size = wcs[i].byte_len;
+            cur_pair->finished.store(true, std::memory_order_release);
+        }
     }
 }
 
@@ -213,7 +226,8 @@ bool RpcSession::recv(MsgBufPair *msg, size_t retry_times) {
         handleQPResponses();
         handleSHMResponses();
     }
-    LOG(INFO) << "Possible packet loss... ip " << rpc->ctx->my_ip;
+    LOG(INFO) << "Possible packet loss... ip " << rpc->ctx->my_ip << " to " << msg->session->qp.oppo_ip
+              << this->rmt_qp_id;
     return false;
 }
 
@@ -221,14 +235,17 @@ void ReqHandle::response() {
     if (type == kQP) {
         auto &sbuf = buf->send_buf;
         // sync -> batch, 800K -> 4M (reduce poll cq race)
-        auto &send_cnt = qp->send_cnt;
         QP *cur_qp = qp->qp;
-        if (++send_cnt >= Rpc::kRecvWrGroupSize) {
-            cur_qp->send((uint64_t)sbuf->buf, sbuf->size, sbuf->lkey, IBV_SEND_SIGNALED);
+        if (++rpc->send_cnt >= Rpc::kRecvWrGroupSize) {
             rpc->postNextGroupRecv();
+            rpc->send_cnt = 0;
+        }
+
+        if (++qp->send_cnt >= Context::kQueueDepth) {
+            cur_qp->send((uint64_t)sbuf->buf, sbuf->size, sbuf->lkey, IBV_SEND_SIGNALED);
             ibv_wc wc;
             cur_qp->pollSendCQ(1, &wc);
-            send_cnt = 0;
+            qp->send_cnt = 0;
         } else {
             cur_qp->send((uint64_t)sbuf->buf, sbuf->size, sbuf->lkey, 0);
         }

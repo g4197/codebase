@@ -13,6 +13,9 @@ namespace rdma {
 struct QPCnt {
     QP *qp;
     int send_cnt;
+    std::string oppo_ip;
+    int oppo_port;
+    int oppo_id;
 };
 
 // Single thread without coroutine.
@@ -30,7 +33,7 @@ struct Rpc {
     void handleQPRequests();
     void handleSHMRequests();
     void postNextGroupRecv();
-    static constexpr int kSrvBufCnt = 64;
+    static constexpr int kSrvBufCnt = 1024;
 
     MsgBufPair *srv_bufs;
     static constexpr int kRecvWrGroupCnt = 2;
@@ -41,6 +44,7 @@ struct Rpc {
     int cur_group;
     ibv_srq *srv_srq;
     ibv_cq *send_cq, *recv_cq;  // shared CQ for every srv QPs.
+    int send_cnt;               // total send count.
     std::unordered_map<int, QPCnt> qpn_qp_map;
 
     template<class T, size_t sz>
@@ -68,7 +72,7 @@ struct Rpc {
             }
         }
     };
-    RingBuffer<ReqHandle *, Context::kQueueDepth> req_handle_free_queue;
+    RingBuffer<ReqHandle *, Context::kQueueDepth * 4> req_handle_free_queue;
 
     // Common.
     ibv_wc wcs[Context::kQueueDepth];
@@ -94,6 +98,7 @@ struct RpcSession {
     void handleSHMResponses();
     Rpc *rpc;
     QPCnt qp;
+    int rmt_qp_id;
 
     // shm.
     ShmRpcRing *shm_ring;
