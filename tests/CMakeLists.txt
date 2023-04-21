@@ -43,3 +43,11 @@ target_link_libraries(
 )
 
 add_subdirectory(think)
+
+add_executable(test_rwl ${PROJECT_SOURCE_DIR}/tests/test_rwl.cpp)
+target_link_libraries(
+	test_rwl
+	rdma
+	stdutils
+	rpc
+)

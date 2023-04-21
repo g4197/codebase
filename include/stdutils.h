@@ -15,6 +15,7 @@
 #include "utils/third_party/city.h"
 #include "utils/third_party/citycrc.h"
 #include "utils/third_party/random.h"
+#include "utils/third_party/rwlock.h"
 #include "utils/third_party/skiplist.h"
 #include "utils/timer.h"
 #include "utils/type_traits.h"
