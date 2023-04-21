@@ -5,3 +5,4 @@ __thread int my_numa_id = kInvalidThreadNUMAId;
 
 std::atomic<int> Thread::tot_threads(0);
 std::atomic<int> Thread::numa_tot_threads[kMaxNUMANodes] = {};
+uint32_t g_version = 1;  // For VersionedRWLock.

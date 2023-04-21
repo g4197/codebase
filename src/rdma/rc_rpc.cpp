@@ -127,13 +127,10 @@ void Rpc::send(RpcSession *session, uint8_t rpc_id, MsgBufPair *buf) {
         session->qp.qp->recv((uint64_t)rbuf->buf, kMTU, rbuf->lkey, (uint64_t)buf);
 
         // batch
-        if (++session->qp.send_cnt == 1) {
+        if (++session->qp.send_cnt == Context::kQueueDepth) {
             session->qp.qp->send((uint64_t)sbuf->buf, sbuf->size, sbuf->lkey, IBV_SEND_SIGNALED, true, rpc_id,
                                  (uint64_t)buf);
-            if (!session->qp.qp->pollSendCQ(1, wcs)) {
-                LOG(INFO) << this->ctx->my_ip << ":" << this->ctx->my_port << " send to " << session->qp.oppo_ip << ":"
-                          << session->qp.oppo_port << " " << session->qp.oppo_id << " failed";
-            }
+            session->qp.qp->pollSendCQ(1, wcs);
             session->qp.send_cnt = 0;
         } else {
             session->qp.qp->send((uint64_t)sbuf->buf, sbuf->size, sbuf->lkey, 0, true, rpc_id, (uint64_t)buf);

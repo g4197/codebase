@@ -19,5 +19,6 @@
 #include "utils/third_party/skiplist.h"
 #include "utils/timer.h"
 #include "utils/type_traits.h"
+#include "utils/v_rwlock.h"
 
 #endif  // STDUTILS_H_
