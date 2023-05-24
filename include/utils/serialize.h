@@ -30,7 +30,7 @@ uint64_t serialize_impl(char *buf, T0 t0, Ts... args) {
             memcpy(buf + sizeof(uint64_t), t0.data(), t0.size());
             size += sizeof(uint64_t) + t0.size();
         }
-    } else if constexpr (std::is_pod_v<T0>) {
+    } else if constexpr (std::is_trivially_copyable_v<T0>) {
         memcpy(buf, &t0, sizeof(T0));
         size += std::max(sizeof(uint64_t), sizeof(T0));  // alignment.
     } else {
@@ -71,7 +71,7 @@ void deserialize_impl(const char *buf, uint64_t size, T0 &t0, Ts &...args) {
             t0 = std::string(buf + sizeof(uint64_t), sz);
             cur_size += sizeof(uint64_t) + sz;
         }
-    } else if constexpr (std::is_pod_v<T0>) {
+    } else if constexpr (std::is_trivially_copyable_v<T0>) {
         memcpy(&t0, buf, sizeof(T0));
         cur_size += std::max(sizeof(T0), sizeof(uint64_t));
     } else {

@@ -57,6 +57,10 @@ public:
         return g_version_.load(std::memory_order_acquire);
     }
 
+    inline uint64_t version(uint64_t thread_id) {
+        return epochs_[thread_id].version();
+    }
+
     inline uint64_t incAndWait(uint64_t delta = 1) {
         // Stunned in this memory order...
         // But in x86, any memory order will be compiled to a fence, so it's OK.
@@ -93,6 +97,10 @@ public:
 
     ~EpochGuard() {
         manager_.out(my_thread_id);
+    }
+
+    uint64_t version() {
+        return manager_.version(my_thread_id);
     }
 
 private:
