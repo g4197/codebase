@@ -137,7 +137,6 @@ template<class T>
 inline const T &sliceToFixed(const Slice &s) {
     // This is only suitable for fixed-size T item
     // something like std::string is not suitable for this
-    assert(s.size() == sizeof(T));
     return *reinterpret_cast<T *>(const_cast<char *>(s.data()));
 }
 

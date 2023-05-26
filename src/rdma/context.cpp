@@ -86,6 +86,7 @@ int Context::identifyGID(ibv_context *ctx, uint8_t port, int proto, const char *
     }
 
     // RoCEv2 with IPv4
+    assert(proto == kRoCEv2);
     uint32_t ipv4_addr = inet_addr(ipv4_subnet);
     DLOG(INFO) << "ipv4 addr: " << ipv4_subnet << " " << ipv4_addr << " " << std::hex << ipv4_addr;
     ibv_gid gid = { 0 }, zeroed_gid = { 0 };
@@ -142,6 +143,9 @@ ibv_mr *Context::createMR(void *addr, uint64_t size, bool odp, bool mw_binding) 
 
 ibv_mr *Context::createMROnChip(int id, void *addr, uint64_t size) {
 #ifdef NO_EX_VERBS
+    std::ignore = id;
+    std::ignore = addr;
+    std::ignore = size;
     return nullptr;
 #else
     std::ignore = addr;

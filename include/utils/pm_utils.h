@@ -165,16 +165,6 @@ inline void pm_free(void *ptr) {
 #endif
 }
 
-template<size_t idx>
-inline void *kvs_malloc(size_t size) {
-    return GAllocator<idx>::pm_alloc(size);
-}
-
-template<>
-inline void *kvs_malloc<kDRAMIdx>(size_t size) {
-    return dram_alloc(size);
-}
-
 inline void clflush(char *data, int len) {
     volatile char *ptr = (char *)((unsigned long)data & ~(kCacheLineSize - 1));
     for (; ptr < data + len; ptr += kCacheLineSize) {
