@@ -78,7 +78,7 @@ struct RpcContext {
 
     inline void regFunc(uint8_t rpc_id, std::function<void(ReqHandle *, void *)> func) {
         if (rpc_id == kRpcNewConnection) {
-            LOG(ERROR) << "rpc_id should not be kRpcNewConnection";
+            LOG(ERROR) << "rpc_id should not be NewConnection";
             return;
         }
         is_server = true;

@@ -17,7 +17,13 @@ struct Rpc {
     Rpc(RpcContext *rpc_ctx, void *context, int qp_id);
 
     // Client API.
+    // Sync connect.
     RpcSession connect(const std::string &ctx_ip, int ctx_port, int qp_id);
+
+    // Async connect.
+    bool sendConnect(const std::string &ctx_ip, int ctx_port, int qp_id, MsgBufPair *conn_buf, RpcSession &session);
+    bool tryRecvConnect(MsgBufPair *conn_buf);
+
     void send(RpcSession *session, uint8_t rpc_id, MsgBufPair *buf);
     void handleQPResponses();
     void handleSHMResponses(RpcSession *session);

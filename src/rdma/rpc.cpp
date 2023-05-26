@@ -80,13 +80,24 @@ Rpc::Rpc(RpcContext *rpc_ctx, void *context, int qp_id) : ctx(rpc_ctx), context(
 
 RpcSession Rpc::connect(const std::string &ctx_ip, int ctx_port, int qp_id) {
     assert(!ctx->is_server);
+    std::lock_guard<std::mutex> lock(conn_buf_mtx);
     RpcSession session;
+    if (!this->sendConnect(ctx_ip, ctx_port, qp_id, &conn_buf, session)) {
+        while (!this->tryRecv(&conn_buf)) {}
+    }
+    return session;
+}
+
+bool Rpc::sendConnect(const std::string &ctx_ip, int ctx_port, int qp_id, MsgBufPair *conn_buf, RpcSession &session) {
+    assert(!ctx->is_server);
     if (ctx_ip == this->ctx->my_ip) {
         // Same machine, use shared memory.
         session.rpc = this;
         session.shm_ring = ShmRpcRing::open(shm_key(ctx_ip, ctx_port, qp_id), kRingElemCnt);
+        return true;
     } else {
         // Exchange connection info.
+        // out-of-band.
         std::string qp_info_str((char *)(&qp.info), sizeof(QPInfo));
         ctx->ctx.put(ctx_ip, ctx_port, identifier.key(), qp_info_str);
 
@@ -96,12 +107,16 @@ RpcSession Rpc::connect(const std::string &ctx_ip, int ctx_port, int qp_id) {
         session.rpc = this;
         session.ah = ibv_create_ah(ctx->ctx.pd, &ah_attr);
         session.qpn = qp_info.qpn;
+
+        // in-band.
         // Invalidate server-side cache.
-        std::lock_guard<std::mutex> lock(conn_buf_mtx);
-        this->send(&session, kRpcNewConnection, &conn_buf);
-        this->recv(&conn_buf);
+        this->send(&session, kRpcNewConnection, conn_buf);
+        return false;
     }
-    return session;
+}
+
+bool Rpc::tryRecvConnect(MsgBufPair *conn_buf) {
+    return this->tryRecv(conn_buf);
 }
 
 void Rpc::send(RpcSession *session, uint8_t rpc_id, MsgBufPair *buf) {
@@ -180,7 +195,11 @@ bool Rpc::tryRecv(MsgBufPair *msg) {
     assert(!ctx->is_server);
     handleQPResponses();
     handleSHMResponses(msg->session);
-    return msg->finished;
+    if (msg->finished) {
+        msg->finished = false;
+        return true;
+    }
+    return false;
 }
 
 void Rpc::recv(MsgBufPair *msg, size_t retry_times) {
