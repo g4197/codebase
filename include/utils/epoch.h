@@ -53,7 +53,7 @@ public:
         epochs_[thread_id].out();
     }
 
-    inline int64_t g_version() {
+    inline uint64_t g_version() {
         return g_version_.load(std::memory_order_acquire);
     }
 

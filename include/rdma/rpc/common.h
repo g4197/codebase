@@ -14,6 +14,7 @@ namespace rdma {
 // Async requests from client are supported.
 
 constexpr uint8_t kRpcNewConnection = UINT8_MAX;
+constexpr uint8_t kRpcResponse = UINT8_MAX - 1;
 constexpr int kMTU = 4096;
 constexpr int kUDHeaderSize = sizeof(ibv_grh);
 
@@ -77,8 +78,8 @@ struct RpcContext {
                int gid_index = Context::kGIDAuto, int proto = Context::kInfiniBand, const char *ipv4_subnet = nullptr);
 
     inline void regFunc(uint8_t rpc_id, std::function<void(ReqHandle *, void *)> func) {
-        if (rpc_id == kRpcNewConnection) {
-            LOG(ERROR) << "rpc_id should not be NewConnection";
+        if (rpc_id == kRpcNewConnection || rpc_id == kRpcResponse) {
+            LOG(ERROR) << "rpc_id should not be NewConnection or Response";
             return;
         }
         is_server = true;
@@ -141,9 +142,9 @@ struct alignas(kCacheLineSize) ShmRpcRingSlot {
 };
 
 struct MsgBufPair {
-    MsgBufPair(RpcContext *ctx) : finished(false) {
+    MsgBufPair(RpcContext *ctx, bool alloc_recv_buf = false) : finished(false) {
         send_buf = ctx->allocBuf();
-        recv_buf = ctx->allocBuf();
+        recv_buf = alloc_recv_buf ? ctx->allocBuf() : nullptr;  // wait for recv() to fill in this.
     }
 
     MsgBufPair(ShmRpcRingSlot *slot, uint64_t ticket) {
@@ -153,9 +154,9 @@ struct MsgBufPair {
     }
 
     MsgBuf *send_buf;
-    MsgBuf *recv_buf;  // mutable because of out-of-order transmission by UD
+    MsgBuf *recv_buf;
     RpcSession *session;
-    uint64_t ticket;  // Used by shm communication
+    uint64_t ticket;  // Ticket for shm and Seq for RDMA.
     std::atomic<bool> finished;
 };
 

@@ -20,19 +20,18 @@ struct Rpc {
     // Sync connect.
     RpcSession connect(const std::string &ctx_ip, int ctx_port, int qp_id);
 
-    // Async connect.
-    bool sendConnect(const std::string &ctx_ip, int ctx_port, int qp_id, MsgBufPair *conn_buf, RpcSession &session);
-    bool tryRecvConnect(MsgBufPair *conn_buf);
-
     void send(RpcSession *session, uint8_t rpc_id, MsgBufPair *buf);
-    void handleQPResponses();
+
     void handleSHMResponses(RpcSession *session);
     bool tryRecv(MsgBufPair *msg);
     void recv(MsgBufPair *msg, size_t retry_times = UINT64_MAX);
 
+    void runEventLoopOnce();
+
+    void handleQP();
+
     // Server API.
     void runServerLoopOnce();
-    void handleQPRequests();
     void handleSHMRequests();
     void postNextGroupRecv();
     static constexpr int kSrvBufCnt = Context::kQueueDepth;
@@ -80,13 +79,15 @@ struct Rpc {
     ibv_wc wcs[Context::kQueueDepth];
     QP qp;
     int send_cnt{};
+    int recv_cnt{};
     RpcContext *ctx{};
     void *context{};
     MsgBufPair conn_buf;
     std::mutex conn_buf_mtx;
 
     // rpc.
-    std::unordered_map<MsgBuf *, MsgBufPair *> rcv_buf_map;  // on fly recv_buf -> MsgBufPair
+    std::unordered_map<uint64_t, MsgBufPair *> seq_buf_map{};  // on fly seq -> MsgBufPair
+    uint64_t seq{};                                            // current sequence (per session).
 
     // shm.
     ShmRpcRing *shm_ring{};
@@ -100,7 +101,7 @@ struct Rpc {
 
 struct RpcSession {
     inline RpcHeader rpcHeader(uint8_t rpc_id) {
-        return RpcHeader{ .identifier = RpcIdentifier(rpc->identifier, rpc_id), .seq = this->seq++ };
+        return RpcHeader{ .identifier = RpcIdentifier(rpc->identifier, rpc_id), .seq = rpc->seq++ };
     }
 
     void send(uint8_t rpc_id, MsgBufPair *buf);
@@ -108,10 +109,6 @@ struct RpcSession {
     Rpc *rpc{};
     ibv_ah *ah{};
     uint32_t qpn{};
-
-    // rpc.
-    std::unordered_map<uint64_t, MsgBufPair *> seq_buf_map{};  // on fly seq -> MsgBufPair
-    uint64_t seq{};                                            // current sequence (per session).
 
     // shm.
     ShmRpcRing *shm_ring{};
