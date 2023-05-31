@@ -12,6 +12,7 @@
 // Bind core first!!!!
 
 static constexpr uint64_t kOutEpochVersion = UINT64_MAX;
+static constexpr uint64_t kInitVersion = 0;
 using std::atomic;
 class Epoch {
 public:
@@ -39,6 +40,7 @@ class EpochManager {
 public:
     EpochManager(int64_t num_threads) : num_threads_(num_threads) {
         epochs_ = new Epoch[num_threads];
+        g_version_ = kInitVersion;
     }
 
     ~EpochManager() {

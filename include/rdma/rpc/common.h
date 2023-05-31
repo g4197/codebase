@@ -156,7 +156,7 @@ struct MsgBufPair {
     MsgBuf *send_buf;
     MsgBuf *recv_buf;
     RpcSession *session;
-    uint64_t ticket;  // Ticket for shm and Seq for RDMA.
+    uint64_t ticket;  // Ticket for shm.
     std::atomic<bool> finished;
 };
 
