@@ -86,7 +86,10 @@ int Context::identifyGID(ibv_context *ctx, uint8_t port, int proto, const char *
     }
 
     // RoCEv2 with IPv4
-    assert(proto == kRoCEv2);
+    if (proto != kRoCEv2) {
+        LOG(ERROR) << "Only RoCEv2 supports IPv4 subnet";
+        return -1;
+    }
     uint32_t ipv4_addr = inet_addr(ipv4_subnet);
     DLOG(INFO) << "ipv4 addr: " << ipv4_subnet << " " << ipv4_addr << " " << std::hex << ipv4_addr;
     ibv_gid gid = { 0 }, zeroed_gid = { 0 };

@@ -32,6 +32,12 @@ QP::QP(ibv_qp *qp, Context *ctx, int id) : qp(qp), ctx(ctx), id(id) {
     recv_wr.num_sge = 1;
 }
 
+QP::QP(const QP &rhs) {
+    memcpy(this, &rhs, sizeof(QP));
+    this->send_wr.sg_list = &this->sge;
+    this->recv_wr.sg_list = &this->sge;
+}
+
 QP &QP::operator=(const QP &rhs) {
     memcpy(this, &rhs, sizeof(QP));
     this->send_wr.sg_list = &this->sge;

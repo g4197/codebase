@@ -12,6 +12,10 @@ RpcContext::RpcContext(const std::string &rpc_ip, int rpc_port, int id, int numa
     this->numa = numa;
     this->is_server = false;
 
+    for (int i = 0; i < UINT8_MAX; ++i) {
+        this->funcs[i] = [](ReqHandle *, void *) { LOG(INFO) << "RPC not implemented"; };
+    }
+
     this->funcs[kRpcNewConnection] = [](ReqHandle *handle, void *) {
         handle->buf->send_buf->size = 1;
         handle->response();
@@ -70,11 +74,6 @@ Rpc::Rpc(RpcContext *rpc_ctx, void *context, int qp_id) : ctx(rpc_ctx), context(
         for (int i = 0; i < kRingElemCnt; ++i) {
             new (shm_bufs + i) MsgBufPair(shm_ring->get(i), i);
         }
-
-        DLOG(INFO) << "Allocate req handle";
-        for (int i = 0; i < Context::kQueueDepth; ++i) {
-            req_handle_free_queue.push(new ReqHandle);
-        }
     }
 }
 
@@ -114,7 +113,9 @@ void Rpc::send(RpcSession *session, uint8_t rpc_id, MsgBufPair *buf) {
 
         // maintain maps.
         this->seq_buf_map.insert(std::make_pair(sbuf->rpc_hdr.seq, buf));
-        DLOG(INFO) << "Send RPC with seq " << sbuf->rpc_hdr.seq << " id " << (int)sbuf->rpc_hdr.identifier.rpc_id;
+        DLOG(INFO) << "Send with identifier " << sbuf->rpc_hdr.identifier.ctx_id << " "
+                   << sbuf->rpc_hdr.identifier.qp_id << " " << (int)sbuf->rpc_hdr.identifier.rpc_id << " seq "
+                   << sbuf->rpc_hdr.seq << " " << my_thread_id;
 
         if (++send_cnt >= Rpc::kRecvWrGroupSize) {
             qp.send((uint64_t)&sbuf->rpc_hdr, sbuf->size + sizeof(RpcHeader), sbuf->lkey, session->ah, session->qpn,
@@ -165,8 +166,9 @@ void Rpc::recv(MsgBufPair *msg, size_t retry_times) {
         if (shm_ring != nullptr) handleSHMRequests();
         handleSHMResponses(msg->session);
     }
-    LOG(INFO) << "Possible packet loss... " << my_thread_id << " for msg " << msg << " " << this->ctx->my_ip << ":"
-              << this->ctx->my_port << " id " << this->qp.id;
+    LOG(INFO) << "Possible packet loss for rpc id " << (int)msg->send_buf->rpc_hdr.identifier.rpc_id << " sequence "
+              << msg->send_buf->rpc_hdr.seq << "... " << my_thread_id << " for msg " << msg << " " << this->ctx->my_ip
+              << ":" << this->ctx->my_port << " id " << this->qp.id;
 }
 
 void Rpc::runServerLoopOnce() {
@@ -175,9 +177,14 @@ void Rpc::runServerLoopOnce() {
     handleSHMRequests();
 }
 
+// may recursively call.
 void Rpc::handleQP() {
+    ibv_wc wcs[Context::kQueueDepth];
     int finished = ibv_poll_cq(qp.qp->recv_cq, Context::kQueueDepth, wcs);
     recv_cnt += finished;
+    if (unlikely(recv_cnt >= Context::kQueueDepth)) {
+        LOG(INFO) << "Recv Queue is exhausted...";
+    }
     while (recv_cnt >= kRecvWrGroupSize) {
         postNextGroupRecv();
         recv_cnt -= kRecvWrGroupSize;
@@ -189,8 +196,6 @@ void Rpc::handleQP() {
         DLOG(INFO) << "Send buf " << cur_pair->send_buf << " with sequence " << cur_pair->send_buf->rpc_hdr.seq;
 
         RpcIdentifier &identifier = cur_pair->recv_buf->rpc_hdr.identifier;
-        DLOG(INFO) << "Got identifier " << identifier.ctx_id << " " << (int)identifier.qp_id << " "
-                   << (int)identifier.rpc_id << " sequence " << cur_pair->recv_buf->rpc_hdr.seq;
 
         if (identifier.rpc_id == kRpcResponse) {
             // Client-side response. Fill in the recv_buf.
@@ -199,11 +204,12 @@ void Rpc::handleQP() {
             assert(pair != nullptr);
             seq_buf_map.erase(seq);
             pair->recv_buf = cur_pair->recv_buf;
-            DLOG(INFO) << "Pair " << pair << " got response " << my_thread_id;
+            DLOG(INFO) << "Cur pair " << cur_pair << " pair " << pair << " got response " << my_thread_id;
             pair->finished.store(true, std::memory_order_release);
         } else {
             // Server-side RPC.
-            memcpy(&cur_pair->send_buf->rpc_hdr, &cur_pair->recv_buf->rpc_hdr, sizeof(RpcHeader));  // echo sequence.
+            cur_pair->send_buf->rpc_hdr.seq = cur_pair->recv_buf->rpc_hdr.seq;
+            cur_pair->send_buf->rpc_hdr.identifier = this->identifier;
             cur_pair->send_buf->rpc_hdr.identifier.rpc_id = kRpcResponse;
             ibv_ah *ah = nullptr;
             uint32_t qpn = 0;
@@ -226,9 +232,8 @@ void Rpc::handleQP() {
                 assert(ah != nullptr);
             }
 
-            auto handle = req_handle_free_queue.pop();
-            *handle = ReqHandle{ this, cur_pair, ah, qpn, ReqHandle::kQP };
-            ctx->funcs[identifier.rpc_id](handle, context);
+            auto handle = ReqHandle{ this, cur_pair, ah, qpn, ReqHandle::kQP };
+            ctx->funcs[identifier.rpc_id](&handle, context);
         }
     }
 }
@@ -236,11 +241,8 @@ void Rpc::handleQP() {
 void Rpc::handleSHMRequests() {
     while (shm_ring->serverTryRecv(shm_ticket)) {
         ShmRpcRingSlot *slot = shm_ring->get(shm_ticket);
-
-        auto handle = req_handle_free_queue.pop();
-        *handle = ReqHandle{ this, &shm_bufs[shm_ticket % kRingElemCnt], nullptr, 0, ReqHandle::kSHM };
-
-        ctx->funcs[slot->rpc_id](handle, context);
+        auto handle = ReqHandle{ this, &shm_bufs[shm_ticket % kRingElemCnt], nullptr, 0, ReqHandle::kSHM };
+        ctx->funcs[slot->rpc_id](&handle, context);
         ++shm_ticket;
     }
 }
@@ -263,7 +265,7 @@ void RpcSession::recv(MsgBufPair *msg, size_t retry_times) {
 void ReqHandle::response() {
     if (type == kQP) {
         auto &sbuf = buf->send_buf;
-        DLOG(INFO) << "Response " << sbuf << " with sequence " << sbuf->rpc_hdr.seq;
+        DLOG(INFO) << "Response " << buf << " with sequence " << sbuf->rpc_hdr.seq;
         // sync -> batch, 800K -> 4M (reduce poll cq race)
         if (++rpc->send_cnt >= Rpc::kRecvWrGroupSize) {
             rpc->qp.send((uint64_t)&sbuf->rpc_hdr, sbuf->size + sizeof(RpcHeader), sbuf->lkey, ah, src_qp,
@@ -278,7 +280,6 @@ void ReqHandle::response() {
         assert(type == kSHM);
         rpc->shm_ring->serverSend(this->buf->ticket);
     }
-    rpc->req_handle_free_queue.push(this);
 }
 
 }  // namespace rdma
