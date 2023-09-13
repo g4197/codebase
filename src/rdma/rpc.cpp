@@ -36,7 +36,7 @@ Rpc::Rpc(RpcContext *rpc_ctx, void *context, int qp_id) : ctx(rpc_ctx), context(
     qp = rpc_ctx->ctx.createQP(qp_id, IBV_QPT_UD, send_cq, recv_cq);
     qp.modifyToRTS(false);
 
-    if (posix_memalign((void **)&srv_bufs, kCacheLineSize, sizeof(MsgBuf) * kSrvBufCnt)) {
+    if (posix_memalign((void **)&srv_bufs, kCacheLineSize, sizeof(MsgBufPair) * kSrvBufCnt)) {
         LOG(FATAL) << "Failed to allocate memory for server buffers";
     }
     for (int i = 0; i < kSrvBufCnt; ++i) {
@@ -63,6 +63,15 @@ Rpc::Rpc(RpcContext *rpc_ctx, void *context, int qp_id) : ctx(rpc_ctx), context(
     }
     postNextGroupRecv();
     postNextGroupRecv();
+
+    if (posix_memalign((void **)&srv_shm_bufs, kCacheLineSize, sizeof(MsgBuf *) * kSrvBufCnt)) {
+        LOG(FATAL) << "Failed to allocate memory for server shm buffers";
+    }
+
+    for (int i = 0; i < kSrvBufCnt; ++i) {
+        srv_shm_bufs[i] = rpc_ctx->allocBuf();
+    }
+    srv_shm_buf_idx = 0;
 
     if (ctx->is_server) {
         DLOG(INFO) << "Initialize shm buffer";
@@ -104,6 +113,8 @@ RpcSession Rpc::connect(const std::string &ctx_ip, int ctx_port, int qp_id) {
 void Rpc::send(RpcSession *session, uint8_t rpc_id, MsgBufPair *buf) {
     buf->session = session;
     if (session->shm_ring != nullptr) {
+        buf->recv_buf = this->srv_shm_bufs[this->srv_shm_buf_idx];
+        this->srv_shm_buf_idx = (this->srv_shm_buf_idx + 1) % kSrvBufCnt;
         uint64_t ticket = session->shm_ring->clientSend(rpc_id, buf->send_buf);
         session->tickets.push_back(std::make_pair(session->shm_ring->get(ticket), buf));
     } else {

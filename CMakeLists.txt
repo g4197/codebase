@@ -16,7 +16,6 @@ add_compile_options(
     -fno-strict-aliasing
 	-std=c++17
 	-march=native
-	-O3
 	-g
 )
 
@@ -69,29 +68,29 @@ target_link_libraries(
 	numa
 )
 
-# add_library(
-# 	extutils
-# 	STATIC
-# 	${EXTUTILS_LIB_SRC}
-# )
-
-# target_link_libraries(
-# 	extutils
-# 	boost_coroutine
-# 	boost_context
-#     memkind
-# 	memcached
-# )
-
-add_executable(
-	main
-	${PROJECT_SOURCE_DIR}/src/main.cpp
+add_library(
+	extutils
+	STATIC
+	${EXTUTILS_LIB_SRC}
 )
 
 target_link_libraries(
-	main
-	rdma
-	stdutils
+	extutils
+	boost_coroutine
+	boost_context
+    memkind
+	memcached
 )
 
-add_subdirectory(tests)
+# add_executable(
+# 	main
+# 	${PROJECT_SOURCE_DIR}/src/main.cpp
+# )
+
+# target_link_libraries(
+# 	main
+# 	rdma
+# 	stdutils
+# )
+
+# add_subdirectory(tests)

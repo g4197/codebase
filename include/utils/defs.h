@@ -12,9 +12,17 @@
  * Some necessary defs and some helper functions.
  */
 
+#ifndef likely
 #define likely(x) __builtin_expect(!!(x), 1)
+#endif
+
+#ifndef unlikely
 #define unlikely(x) __builtin_expect(!!(x), 0)
+#endif
+
+#ifndef forceinline
 #define forceinline inline __attribute__((always_inline))
+#endif
 
 constexpr int kMaxNUMANodes = 8;  // Maybe need to modify this
 constexpr int kBindCoreOffset[kMaxNUMANodes] = {
@@ -33,44 +41,5 @@ extern __thread char thread_buf[kThreadBufSize] __attribute__((aligned(kPMLineSi
 extern __thread int my_thread_id;
 extern __thread int my_numa_id;
 constexpr int kInvalidThreadNUMAId = -1;
-
-inline void fence() {
-    asm volatile("" ::: "memory");
-}
-
-inline void sfence() {
-    asm volatile("sfence" ::: "memory");
-}
-
-inline uint64_t rdtsc() {
-    uint64_t lo, hi;
-    asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
-    return ((uint64_t)hi << 32) | lo;
-}
-
-inline void prefetch(const void *ptr) {
-    typedef struct {
-        char x[kCacheLineSize];
-    } cacheline_t;
-    asm volatile("prefetcht0 %0" : : "m"(*(const cacheline_t *)ptr));
-}
-
-inline void rt_assert(bool condition, std::string throw_str) {
-    if (unlikely(!condition)) {
-        LOG(ERROR) << "Assertion failed: " << throw_str;
-    }
-}
-
-inline bool cmpxchg16b(__int128_t *ptr, __int128_t old_value, __int128_t new_value) {
-    return __sync_bool_compare_and_swap(ptr, old_value, new_value);
-}
-
-/*
-inline void movdir64b(void *dst, void *src) {
-    // Use the movdir64b to move 64B atomically from src to dst.
-    // Load from src is not atomic, but store to dst is.
-    asm volatile("movdir64b (%0), (%1)" : : "r"(src), "r"(dst) : "memory");
-}
-*/
 
 #endif  // DEFS_H_

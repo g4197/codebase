@@ -1,10 +1,11 @@
 #ifndef COROUTINE_H_
 #define COROUTINE_H_
 
-#include "utils/log.h"
-
 #include <boost/coroutine2/all.hpp>
 #include <vector>
+
+#include "utils/defs.h"
+#include "utils/log.h"
 
 struct Coroutine {
     using coro_t = boost::coroutines2::coroutine<void>;
@@ -67,7 +68,12 @@ struct CoroScheduler {
         return false;
     }
 
+    inline int coro_id() {
+        return cur_index_;
+    }
+
     inline void yield() {
+        if (unlikely(!yield_)) return;
         (*yield_)();
     }
 };

@@ -99,6 +99,18 @@ public:
         run(key, h, [](std::pair<int, pthread_rwlock_t> &it) {
             it.first++;
             pthread_rwlock_rdlock(&it.second);
+            return 0;
+        });
+    }
+
+    int tryrdlock(const K &key) {
+        return tryrdlock(key, pos(key));
+    }
+
+    int tryrdlock(const K &key, size_t h) {
+        return run(key, h, [](std::pair<int, pthread_rwlock_t> &it) {
+            it.first++;
+            return pthread_rwlock_tryrdlock(&it.second);
         });
     }
 
@@ -111,6 +123,7 @@ public:
         run(key, h, [](std::pair<int, pthread_rwlock_t> &it) {
             it.first++;
             pthread_rwlock_wrlock(&it.second);
+            return 0;
         });
     }
 
@@ -123,11 +136,12 @@ public:
         run(key, h, [](std::pair<int, pthread_rwlock_t> &it) {
             it.first--;
             pthread_rwlock_unlock(&it.second);
+            return 0;
         });
     }
 
 private:
-    void run(const K &key, size_t h, std::function<void(std::pair<int, pthread_rwlock_t> &)> f) {
+    int run(const K &key, size_t h, std::function<int(std::pair<int, pthread_rwlock_t> &)> f) {
         auto &table = locks_[h % n_shards_];
         std::lock_guard<std::shared_mutex> guard(table.mutex);
         if (table.locks.find(key) == table.locks.end()) {
@@ -135,10 +149,11 @@ private:
             table.locks[key] = std::make_pair(0, m);
         }
         auto it = table.locks.find(key);
-        f(it->second);
+        int ret = f(it->second);
         if (it->second.first == 0) {
             table.locks.erase(it);
         }
+        return ret;
     }
     int n_shards_;
     struct HashTable {

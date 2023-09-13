@@ -21,6 +21,10 @@
  * Should modify: kPMPrefix (/mnt/pm0 or /mnt/pm1 by default)
  */
 
+inline void sfence() {
+    asm volatile("sfence" ::: "memory");
+}
+
 extern void *cur_map_start_addr;
 void *const kPMMapStartAddr = (void *)0x419700000000;
 const std::string kPMPrefix = "/mnt/pm";

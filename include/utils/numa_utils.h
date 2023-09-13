@@ -11,6 +11,12 @@
 #include "utils/defs.h"
 #include "utils/log.h"
 
+inline void rt_assert(bool condition, std::string throw_str) {
+    if (unlikely(!condition)) {
+        LOG(ERROR) << "Assertion failed: " << throw_str;
+    }
+}
+
 inline int numa_nodes() {
     // O(1) here. Assume numa_nodes won't change when running.
     // avoid repeatedly call numa_num_configured_nodes()
