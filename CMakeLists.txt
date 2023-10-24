@@ -17,6 +17,7 @@ add_compile_options(
 	-std=c++17
 	-march=native
 	-g
+	-O2
 )
 
 add_definitions(
