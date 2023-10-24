@@ -27,3 +27,9 @@ target_link_libraries(
 	rpc
 	profiler
 )
+
+add_executable(mem ${PROJECT_SOURCE_DIR}/tests/think/mem.cpp)
+target_link_libraries(
+	mem
+	stdutils
+)

@@ -93,4 +93,4 @@ target_link_libraries(
 # 	stdutils
 # )
 
-# add_subdirectory(tests)
+add_subdirectory(tests)
