@@ -33,6 +33,9 @@ inline std::vector<std::string> split(const std::string &s, char delim) {
         }
         r++;
     }
+    if (r - l > 0) {
+        elems.push_back(s.substr(l, r - l));
+    }
     return elems;
 }
 
